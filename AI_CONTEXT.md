@@ -495,7 +495,7 @@ On Linux, I/O uses `@syscall`. On Windows, `@import` for WinAPI. On ZeroPoint (`
 ### Pipeline
 
 ```
-Source -> Lexer -> Parser -> AST -> Semantic Analysis -> IR -> Native Backend -> ELF/PE32+
+Source -> Lexer -> Parser -> AST -> Semantic Analysis -> IR -> IR Optimizer -> Native Backend -> ELF/PE32+
 ```
 
 On Linux, the native backend links with `ld` (x86-64) or `ld.lld` (AArch64).
@@ -506,7 +506,7 @@ On Linux, the native backend links with `ld` (x86-64) or `ld.lld` (AArch64).
 |-----------------|--------------------------------------------------|
 | `src/frontend/` | Lexer (`lexer.cpp`), Parser (`parser.cpp`), AST (`ast.cpp`) |
 | `src/semantic/` | Semantic analysis, symbol table, type checking   |
-| `src/ir/`       | IR generation (`ir_gen.cpp`), IR dump            |
+| `src/ir/`       | IR generation (`ir_gen.cpp`), IR optimizer (`opt.cpp`), IR dump |
 | `src/backend/`  | Instruction selection (x86-64 `isel.cpp`, AArch64 `aarch64_isel.cpp`), emitters (`fasmcodegen.cpp`, `aarch_64.cpp`), ELF writer, PE writer |
 | `src/modules/`  | Module loading                                   |
 | `src/support/`  | Type context, symbol path utilities              |
@@ -520,6 +520,7 @@ On Linux, the native backend links with `ld` (x86-64) or `ld.lld` (AArch64).
 - `src/ir/ir_gen.cpp` (2081 lines) - IR generation from AST.
 - `include/quant/frontend/ast.h` - all AST node definitions.
 - `include/quant/ir/ir.h` - all IR instruction definitions.
+- `src/ir/opt.cpp` - target-independent IR optimizer (`-O0`..`-O3`): constant folding, constant/copy propagation through locals, CFG cleanup, compile-time evaluation of pure loops, dead code / dead store elimination, whole-program pruning. Temps are single-assignment; locals are mutable slots written only by `IRStoreLocal` (a local whose address is taken via `IRAddrOf` is never tracked).
 - `include/quant/attributes/attributes.h` - attribute registry.
 - `src/backend/aarch64_isel.cpp` (~950 lines) - AArch64 instruction selection and code generation.
 - `src/backend/aarch_64.cpp` - AArch64 emitter (binary encoding for all instructions).

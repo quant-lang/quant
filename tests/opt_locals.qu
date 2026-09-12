@@ -1,0 +1,88 @@
+load "std::io";
+using std::io;
+
+struct Pair {
+    mut i32 a;
+    i32 b;
+};
+
+void bump(mut &Pair p) {
+    p.a = p.a + 1;
+}
+
+void bump_ptr(mut *i32 p) {
+    p[0] = p[0] + 1;
+}
+
+i32 twice(mut i32 v) {
+    v = v * 2;
+    return v;
+}
+
+i32 main() {
+    // struct local mutated through a reference: stores go through memory
+    Pair q = {1, 0};
+    bump(&q);
+    bump(&q);
+    mut i32 x = q.a;
+    println(x as str);              // 3
+
+    // pointer local whose address is taken: the slot it points to changes
+    mut *i32 ptr = nullptr;
+    region r {
+        ptr = alloc(i32, 1);
+        ptr[0] = 40;
+        bump_ptr(ptr);
+        bump_ptr(ptr);
+        println(ptr[0] as str);     // 42
+    }
+
+    // constants through a struct local
+    Pair p = {4, 5};
+    mut i32 s = 0;
+    for (mut i32 i = 0; i < 3; i = i + 1) {
+        s = s + p.a * p.b;
+    }
+    println(s as str);              // 60
+
+    // mutable parameter
+    println(twice(21) as str);      // 42
+
+    // float locals propagate and fold
+    mut f64 fl = 1.5;
+    fl = fl * 4.0;
+    mut f64 acc = 0.0;
+    if (fl > 5.0) { acc = fl + 0.25; } else { acc = -1.0; }
+    println(acc as str);            // 6.25
+
+    // bool logic with constants
+    bool t = true;
+    bool f = false;
+    mut i32 cnt = 0;
+    if (t && !f) { cnt = cnt + 1; }
+    if (t || f)  { cnt = cnt + 1; }
+    if (f && t)  { cnt = cnt + 100; }
+    println(cnt as str);            // 2
+
+    // narrowing cast stays a runtime operation, widening is folded
+    i32 big = 1000;
+    i8 small = big as i8;
+    i64 wide = small as i64;
+    println(wide as str);
+
+    // else-if chain on a value modified in a runtime branch
+    mut i32 v = 0;
+    if (x == 3) { v = 2; }
+    if (v == 1) { println("one"); }
+    else if (v == 2) { println("two"); }
+    else { println("other"); }
+
+    // value re-read after a loop that used it
+    mut i32 y = 10;
+    for (mut i32 k = 0; k < y; k = k + 1) {
+        y = y - 1;
+    }
+    println(y as str);              // 5
+
+    return 0;
+}

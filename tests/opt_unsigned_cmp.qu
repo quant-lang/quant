@@ -1,0 +1,19 @@
+load "std::io";
+using std::io;
+
+// Unsigned comparisons must treat values >= 2^63 as large, both at runtime
+// and when folded at compile time.
+i32 main() {
+    mut u64 x = 0;
+    x = x - 1;
+    if (x < 5) { println("lt"); } else { println("ge"); }      // ge
+    if (x > 5) { println("gt"); } else { println("le"); }      // gt
+
+    mut u32 y = 4294967295;
+    if (y > 100) { println("gt"); } else { println("le"); }    // gt
+
+    u64 half = 9223372036854775807;
+    mut u64 big = half + 1;
+    if (big >= half) { println("big"); } else { println("small"); } // big
+    return 0;
+}

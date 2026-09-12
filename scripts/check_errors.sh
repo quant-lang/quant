@@ -11,8 +11,13 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-QU="$REPO_ROOT/build/bin/qu"
 TESTS_DIR="$REPO_ROOT/tests"
+
+# Overrides:
+#   QU       - path to the compiler binary (default: build/bin/qu)
+#   QU_FLAGS - extra compiler flags, e.g. "-O0" or "-O3" (default: none)
+QU="${QU:-$REPO_ROOT/build/bin/qu}"
+read -r -a QU_FLAGS <<< "${QU_FLAGS:-}"
 
 if [[ ! -x "$QU" ]]; then
     echo "FATAL: compiler not found at $QU" >&2
@@ -38,7 +43,7 @@ while IFS= read -r -d '' file; do
     name="${file#$TESTS_DIR/}"
     basename_no_ext="${name%.qu}"
 
-    if "$QU" "$file" >/dev/null 2>&1; then
+    if "$QU" "$file" "${QU_FLAGS[@]}" >/dev/null 2>&1; then
         if [[ "$basename_no_ext" == *_err ]]; then
             ((unexpected_ok++)) || true
             unexpected_ok_list+=("$name")

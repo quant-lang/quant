@@ -306,14 +306,19 @@ void ISel::emit_binop(const IRBinary& x, const IRFunction& fn) {
         case IRBinaryOp::Gt:
         case IRBinaryOp::Gte:
             text.cmp_r64_r64(x86::RAX, x86::RBX);
-            switch (x.op) {
-                case IRBinaryOp::Eq:    text.setcc(x86::COND_E, x86::RAX); break;
-                case IRBinaryOp::NotEq: text.setcc(x86::COND_NE, x86::RAX); break;
-                case IRBinaryOp::Lt:    text.setcc(x86::COND_L, x86::RAX); break;
-                case IRBinaryOp::Lte:   text.setcc(x86::COND_LE, x86::RAX); break;
-                case IRBinaryOp::Gt:    text.setcc(x86::COND_G, x86::RAX); break;
-                case IRBinaryOp::Gte:   text.setcc(x86::COND_GE, x86::RAX); break;
-                default: break;
+            {
+                // Unsigned kinds (u8..u64, bool) must use the unsigned
+                // condition codes, otherwise values >= 2^63 compare as negative.
+                const bool sg = is_signed_int(x.type_kind);
+                switch (x.op) {
+                    case IRBinaryOp::Eq:    text.setcc(x86::COND_E, x86::RAX); break;
+                    case IRBinaryOp::NotEq: text.setcc(x86::COND_NE, x86::RAX); break;
+                    case IRBinaryOp::Lt:    text.setcc(sg ? x86::COND_L  : x86::COND_B,  x86::RAX); break;
+                    case IRBinaryOp::Lte:   text.setcc(sg ? x86::COND_LE : x86::COND_BE, x86::RAX); break;
+                    case IRBinaryOp::Gt:    text.setcc(sg ? x86::COND_G  : x86::COND_A,  x86::RAX); break;
+                    case IRBinaryOp::Gte:   text.setcc(sg ? x86::COND_GE : x86::COND_AE, x86::RAX); break;
+                    default: break;
+                }
             }
             text.movzx_r64_r8(x86::RAX, x86::RAX);
             break;

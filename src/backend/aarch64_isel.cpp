@@ -72,15 +72,17 @@ bool is_float(ast::TypeKind kind) {
     return kind == ast::TypeKind::F32 || kind == ast::TypeKind::F64;
 }
 
-// Map IR comparison ops to AArch64 condition codes (signed).
-aarch64::Cond cmp_op_to_cond(IRBinaryOp op) {
+// Map IR comparison ops to AArch64 condition codes. Unsigned kinds
+// (u8..u64, bool) use the unsigned codes so values >= 2^63 do not compare
+// as negative.
+aarch64::Cond cmp_op_to_cond(IRBinaryOp op, bool is_signed) {
     switch (op) {
         case IRBinaryOp::Eq:    return aarch64::COND_EQ;
         case IRBinaryOp::NotEq: return aarch64::COND_NE;
-        case IRBinaryOp::Lt:    return aarch64::COND_LT;
-        case IRBinaryOp::Lte:   return aarch64::COND_LE;
-        case IRBinaryOp::Gt:    return aarch64::COND_GT;
-        case IRBinaryOp::Gte:   return aarch64::COND_GE;
+        case IRBinaryOp::Lt:    return is_signed ? aarch64::COND_LT : aarch64::COND_CC;
+        case IRBinaryOp::Lte:   return is_signed ? aarch64::COND_LE : aarch64::COND_LS;
+        case IRBinaryOp::Gt:    return is_signed ? aarch64::COND_GT : aarch64::COND_HI;
+        case IRBinaryOp::Gte:   return is_signed ? aarch64::COND_GE : aarch64::COND_CS;
         default:                return aarch64::COND_AL;
     }
 }
@@ -612,7 +614,7 @@ void AArch64ISel::emit_inst(const IRProgram& program, const IRFunction& fn, cons
                 case IRBinaryOp::Lt: case IRBinaryOp::Lte:
                 case IRBinaryOp::Gt: case IRBinaryOp::Gte:
                     text.cmp_reg(aarch64::X0, aarch64::X1);
-                    text.cset(aarch64::X0, cmp_op_to_cond(x.op));
+                    text.cset(aarch64::X0, cmp_op_to_cond(x.op, is_signed_int(x.type_kind)));
                     break;
             }
             text.str_imm(aarch64::X0, aarch64::X29, temp_offset(x.dst, fn));

@@ -1,0 +1,12 @@
+// Stress case for compile-time loop evaluation: three independent loops of
+// ~1M iterations each. At -O2 they are evaluated by the optimizer and main
+// collapses to `return 2999997` (exit code 2999997 mod 256 = 189).
+i32 main() {
+    mut i32 a = 0;
+    for (mut i32 i = 0; i < 999999; i = i + 1) { a = a + 1; }
+    mut i32 b = 0;
+    for (mut i32 j = 0; j < 999999; j = j + 1) { b = b + 1; }
+    mut i32 c = 0;
+    for (mut i32 k = 0; k < 999999; k = k + 1) { c = c + 1; }
+    return a + b + c;
+}

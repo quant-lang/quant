@@ -10,17 +10,26 @@
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path $PSScriptRoot -Parent
-$Qu = Join-Path $RepoRoot "build/bin/qu.exe"
 $TestsDir = Join-Path $RepoRoot "tests"
 
-if (-not (Test-Path $Qu)) {
-    # Try Linux-style path (e.g. running from WSL)
-    $Qu = Join-Path $RepoRoot "build/bin/qu"
+# Overrides:
+#   QU       - path to the compiler binary (default: build/bin/qu.exe)
+#   QU_FLAGS - extra compiler flags, e.g. "-O0" or "-O3" (default: none)
+if ($env:QU) {
+    $Qu = $env:QU
+} else {
+    $Qu = Join-Path $RepoRoot "build/bin/qu.exe"
+    if (-not (Test-Path $Qu)) {
+        # Try Linux-style path (e.g. running from WSL)
+        $Qu = Join-Path $RepoRoot "build/bin/qu"
+    }
 }
 if (-not (Test-Path $Qu)) {
     Write-Error "FATAL: compiler not found at $Qu"
     exit 1
 }
+$QuFlags = @()
+if ($env:QU_FLAGS) { $QuFlags = $env:QU_FLAGS -split '\s+' | Where-Object { $_ } }
 
 $pass = 0
 $expectedErr = 0
@@ -44,7 +53,8 @@ foreach ($file in $files) {
     $relPath = $file.FullName.Substring($TestsDir.Length + 1)
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
 
-    $proc = Start-Process -FilePath $Qu -ArgumentList $file.FullName -NoNewWindow -Wait -PassThru -RedirectStandardOutput "$env:TEMP\qu_out.tmp" -RedirectStandardError "$env:TEMP\qu_err.tmp"
+    $args = @($file.FullName) + $QuFlags
+    $proc = Start-Process -FilePath $Qu -ArgumentList $args -NoNewWindow -Wait -PassThru -RedirectStandardOutput "$env:TEMP\qu_out.tmp" -RedirectStandardError "$env:TEMP\qu_err.tmp"
 
     if ($proc.ExitCode -eq 0) {
         if ($baseName -match '_err$') {

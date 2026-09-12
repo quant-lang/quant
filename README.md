@@ -144,22 +144,11 @@ OS ABI is a small, self-contained change. See
 
 ---
 
-## Roadmap
-
-### Short-term
-
-* fix all bugs 
-* improve diagnostics
-* rewrite front-end in Quant
-
-### Long-term
-
-* optimizations
-* self-hosting compiler
-
 ## Todo
-* [x] Basic optimizations 
-* [ ] Windows .lib supportss
+* [x] Basic optimizations
+* [x] Advanced optimizations
+* [ ] Compile time metadata
+* [ ] Windows .lib support
 * [ ] Rewrite front-end in Quant; make linking with qu & cpp in CMake and -DQUANT_FRONTEND flag
 
 ---

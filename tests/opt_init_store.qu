@@ -1,0 +1,36 @@
+load "std::io";
+using std::io;
+
+// Regression: a constant store followed by a non-constant store to the same
+// local before a loop. The loop must see the LAST value (the parameter),
+// not the earlier constant.
+i32 scaled_sum(i32 p) {
+    mut i32 a = 5;
+    a = p;
+    mut i32 s = 0;
+    for (mut i32 i = 0; i < 3; i = i + 1) {
+        s = s + a;
+    }
+    return s;
+}
+
+// Same shape, but the overriding value comes from a runtime branch.
+i32 pick_sum(bool flag) {
+    mut i32 a = 1;
+    if (flag) {
+        a = 10;
+    }
+    mut i32 s = 0;
+    for (mut i32 i = 0; i < 4; i = i + 1) {
+        s = s + a;
+    }
+    return s;
+}
+
+i32 main() {
+    println(scaled_sum(7) as str);      // 21
+    println(scaled_sum(-2) as str);     // -6
+    println(pick_sum(true) as str);     // 40
+    println(pick_sum(false) as str);    // 4
+    return 0;
+}

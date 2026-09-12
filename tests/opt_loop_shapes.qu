@@ -1,0 +1,98 @@
+load "std::io";
+using std::io;
+
+// Loop shapes the optimizer must either fold correctly or leave alone.
+i32 main() {
+    // continue inside a for loop: the step still runs
+    mut i32 a = 0;
+    for (mut i32 i = 0; i < 10; i = i + 1) {
+        if (i == 2 || i == 5) { continue; }
+        a = a + i;
+    }
+    println(a as str);              // 45 - 2 - 5 = 38
+
+    // break out of a while(true)-style loop
+    mut i32 b = 0;
+    mut i32 j = 0;
+    while (true) {
+        j = j + 1;
+        b = b + j;
+        if (j >= 6) { break; }
+    }
+    println(b as str);              // 1+2+3+4+5+6 = 21
+
+    // switch inside a loop, with fallthrough case labels
+    mut i32 c = 0;
+    for (mut i32 k = 0; k < 8; k = k + 1) {
+        switch (k) {
+            case 0: case 1: { c = c + 1; }
+            case 2:         { c = c + 10; }
+            default:        { c = c + 100; }
+        }
+    }
+    println(c as str);              // 2 + 10 + 5*100 = 512
+
+    // triple nesting, inner loops depend on outer counters
+    mut i32 d = 0;
+    for (mut i32 x = 0; x < 4; x = x + 1) {
+        for (mut i32 y = 0; y < x; y = y + 1) {
+            for (mut i32 z = 0; z < y; z = z + 1) {
+                d = d + 1;
+            }
+        }
+    }
+    println(d as str);              // C(4,3) = 4
+
+    // division inside a branch that is never taken must not be folded
+    // into a compile-time error or crash
+    mut i32 e = 100;
+    mut i32 zero = 0;
+    for (mut i32 m = 0; m < 3; m = m + 1) {
+        if (m > 10) {
+            e = e / zero;
+        }
+        e = e - 1;
+    }
+    println(e as str);              // 97
+
+    // i64 accumulation with widening casts inside the body
+    mut i64 f = 0;
+    for (mut i32 n = 0; n < 1000; n = n + 1) {
+        f = f + (n as i64) * 1000000;
+    }
+    println(f as str);              // 499500000000
+
+    // unsigned counter
+    mut u32 g = 0;
+    mut u32 gi = 0;
+    while (gi < 10) {
+        g = g + gi;
+        gi = gi + 1;
+    }
+    println(g as str);              // 45
+
+    // loop whose exit depends on a value from a call: runtime only
+    mut i32 h = 0;
+    mut i32 limit = std::io::strlen("abcdefgh") as i32;
+    for (mut i32 q = 0; q < limit; q = q + 1) {
+        h = h + 2;
+    }
+    println(h as str);              // 16
+
+    // a loop that never runs
+    mut i32 w = 7;
+    while (w < 0) {
+        w = w + 1;
+    }
+    println(w as str);              // 7
+
+    // early return from inside a loop
+    for (mut i32 r = 0; r < 100; r = r + 1) {
+        if (r == 3) {
+            println(r as str);      // 3
+            return 0;
+        }
+    }
+    println("unreachable");
+    return 1;
+}

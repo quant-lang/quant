@@ -855,8 +855,109 @@ qu file.qu --emit-asm         # print generated assembly
 qu file.qu --time             # print compilation time
 qu file.qu --no-compile       # semantic analysis only
 
-qu file.qu -O2 output # optimizations (O2 is default; you can set 0-3 level of optimizations)
+qu file.qu -O2 -o output      # optimization level 0-3 (default: -O2)
 ```
+
+### Optimization levels
+
+Quant performs optimization directly on its own IR, between IR generation and the native backend. This means the same optimizer is shared by every supported target: x86-64, AArch64, Windows and ZeroPoint.
+
+The goal is simple: **make the generated program smaller and faster without changing what it does.**
+
+Optimization levels build on each other:
+
+| Level | What happens                                                                                                                                             |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `-O0` | No optimization. The IR is passed to the backend almost as-is. Useful for debugging the compiler and inspecting raw IR.                                  |
+| `-O1` | Cleans up the local mess: constant folding, algebraic simplification, constant/copy propagation, control-flow cleanup, dead temporaries and dead stores. |
+| `-O2` | Everything from `-O1`, plus compile-time evaluation of pure loops and whole-program pruning of unused functions, strings and globals.                    |
+| `-O3` | Same optimizations as `-O2`, but with an 8× larger budget for compile-time loop evaluation.                                                              |
+
+For example, code that looks like this:
+
+```qu
+i32 x = 10 * 20;
+i32 y = x + 5;
+```
+
+doesn't need to survive into the final machine code as a sequence of calculations. At `-O1`, the optimizer can reduce it to the equivalent of:
+
+```qu
+i32 y = 205;
+```
+
+Quant can also evaluate **pure loops at compile time**. A loop whose body only works with local variables and integer arithmetic can disappear entirely from runtime:
+
+```qu
+i32 sum = 0;
+
+for (mut i32 i = 0; i < 100; i++) {
+    sum += i;
+}
+```
+
+At `-O2`, the compiler can calculate the result while compiling the program instead of making the generated executable perform the loop every time it runs. Nested loops, `if`/`switch`, `break` and `continue` are supported as long as the evaluated code remains within the allowed compile-time rules.
+
+`-O3` does not introduce a completely different optimizer. It simply gives compile-time evaluation a much larger budget, allowing longer calculations to be folded before runtime.
+
+Quant also removes things that the program never actually uses. At `-O2`, unused functions, string literals and globals are pruned from the IR. This is especially useful for the standard library, where a program may depend on a module without needing every symbol it contains.
+
+Optimization is deliberately kept in the IR rather than being tied to a particular backend. The pipeline is therefore:
+
+```text
+Source
+  ↓
+Lexer → Parser → AST → Semantic
+  ↓
+IR generation
+  ↓
+IR optimization (-O0..-O3)
+  ↓
+Native backend
+  ↓
+ELF / PE32+
+```
+
+For debugging or experimentation, individual optimization passes can be disabled with `QUANT_SKIP`:
+
+```text
+QUANT_SKIP=fold,branch,locals,cfg,loop,dead,dse,prune
+```
+
+The available passes are:
+
+* `fold` - constant folding and algebraic simplification
+* `branch` - branch/jump simplification
+* `locals` - constant and copy propagation through locals
+* `cfg` - control-flow cleanup and unused-label removal
+* `loop` - compile-time evaluation of pure loops
+* `dead` - dead temporary elimination
+* `dse` - dead-store elimination
+* `prune` - unused function, string and global removal
+
+Quant includes a small benchmark tool for observing what the optimizer actually does:
+
+```text
+build/bin/quant_bench file.qu
+```
+Example:
+```md
+### tests/bench_loop_fold.qu
+
+Front end (lexer, parser, semantic, IR gen): 1.339 ms
+Optimizer time is the minimum of 5 runs.
+
+| level | optimize, ms | IR insts    | insts in 'main' | functions | loops folded | branches folded |
+|-------|--------------|-------------|-----------------|-----------|--------------|-----------------|
+| -O0   | 0.000        | 1442 (100%) | 150             | 38 / 38   | 0            | 0               |
+| -O1   | 0.870        | 1107 (77%)  | 134             | 38 / 38   | 0            | 1               |
+| -O2   | 10.0         | 636 (44%)   | 21              | 25 / 38   | 5            | 1               |
+| -O3   | 9.997        | 636 (44%)   | 21              | 25 / 38   | 5            | 1               |
+```
+
+It reports optimizer time and resulting IR size for each optimization level.
+
+Correctness is checked separately: `scripts/check_opt.ps1` runs the test suite against every optimization level and verifies that the observable program output remains identical to `-O0`.
 
 The native backend generates machine code directly: x86-64 (ELF/PE32+) and AArch64 (ELF). No external assembler is required. Use `--target aarch64` (or `--target arm64`) to cross-compile for AArch64. Cross-linking uses `ld.lld` for AArch64 targets.
 

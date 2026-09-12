@@ -26,16 +26,17 @@ option(QUANT_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(QUANT_ENABLE_LTO "Enable interprocedural optimization in Release builds" ON)
 option(QUANT_ENABLE_ASAN "Enable AddressSanitizer/UBSan in Debug builds" OFF)
 option(QUANT_ENABLE_TESTS "Build tests" OFF)
+option(QUANT_ENABLE_BENCH "Build the IR optimizer benchmark (quant_bench)" ON)
 
 # Backends compiled into the compiler binary. CMake answers
 # "what targets can this compiler build for?"; --target then picks one of the
 # enabled entries at compile time (see src/backend/targets.cpp).
 set(QUANT_KNOWN_BACKENDS "x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint")
-  if(NOT DEFINED QUANT_BACKENDS OR QUANT_BACKENDS STREQUAL "")
-    # The compiler is host-independent: every build can emit any target that
-    # was compiled in. Enable all known backends by default.
-    set(QUANT_BACKENDS "${QUANT_KNOWN_BACKENDS}")
-  endif()
+if(NOT DEFINED QUANT_BACKENDS OR QUANT_BACKENDS STREQUAL "")
+  # The compiler is host-independent: every build can emit any target that
+  # was compiled in. Enable all known backends by default.
+  set(QUANT_BACKENDS "${QUANT_KNOWN_BACKENDS}")
+endif()
 foreach(_backend ${QUANT_BACKENDS})
   if(NOT _backend IN_LIST QUANT_KNOWN_BACKENDS)
     message(FATAL_ERROR
@@ -254,6 +255,12 @@ add_executable(qu
 target_link_libraries(qu
     PRIVATE libquant quant_compiler_flags
 )
+
+# IR optimizer benchmark (benchmark.cpp): times optimize() per level
+if(QUANT_ENABLE_BENCH)
+  add_executable(quant_bench benchmark.cpp)
+  target_link_libraries(quant_bench PRIVATE libquant quant_compiler_flags)
+endif()
 
 # Install rules
 include(GNUInstallDirs)

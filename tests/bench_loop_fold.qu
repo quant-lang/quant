@@ -1,0 +1,60 @@
+load "std::io";
+using std::io;
+
+// n comes from a parameter, so this loop is NOT compile-time foldable.
+// It runs at runtime at every optimization level (kept for correctness
+// and as a non-foldable reference point).
+i64 sum_range(i32 n) {
+    mut i64 s = 0;
+    for (mut i32 i = 0; i < n; i = i + 1) {
+        s = s + i;
+    }
+    return s;
+}
+
+i32 main() {
+    // small: sum 0..4 => folds to a constant at O2
+    mut i32 sum = 0;
+    for (mut i32 i = 0; i < 5; i = i + 1) {
+        sum = sum + i;
+    }
+    println(sum as str);            // 10
+
+    // medium: sum of squares 0..999 => folds at O2
+    mut i32 sq = 0;
+    for (mut i32 i = 0; i < 1000; i = i + 1) {
+        sq = sq + i * i;
+    }
+    println(sq as str);             // 332833500
+
+    // large: 100000 iterations => folds at O2
+    mut i32 cnt = 0;
+    for (mut i32 i = 0; i < 100000; i = i + 1) {
+        cnt = cnt + 1;
+    }
+    println(cnt as str);            // 100000
+
+    // while loop, 200000 iterations => folds at O2
+    mut i32 c2 = 0;
+    mut i32 k = 0;
+    while (k < 200000) {
+        c2 = c2 + 1;
+        k = k + 1;
+    }
+    println(c2 as str);             // 200000
+
+    // nested loops: the whole nest is evaluated at compile time at O2
+    mut i32 prod = 0;
+    for (mut i32 x = 0; x < 200; x = x + 1) {
+        for (mut i32 y = 0; y < 200; y = y + 1) {
+            prod = prod + 1;
+        }
+    }
+    println(prod as str);           // 200*200 = 40000
+
+    // parameter-driven loop: not foldable, still correct
+    i64 r = sum_range(1000000);
+    println(r as str);              // 499999500000
+
+    return 0;
+}

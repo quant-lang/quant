@@ -1,0 +1,65 @@
+load "std::io";
+using std::io;
+
+i32 main() {
+    // Simple counting loop: folds to a constant at O2
+    mut i32 sum = 0;
+    for (mut i32 i = 0; i < 5; i = i + 1) {
+        sum = sum + i;
+    }
+    println(sum as str);          // 0+1+2+3+4 = 10
+
+    // Constant accumulator with a fixed trip count
+    mut i32 acc = 1;
+    for (mut i32 j = 0; j < 6; j = j + 1) {
+        acc = acc + 2;
+    }
+    println(acc as str);          // 1 + 6*2 = 13
+
+    // Step of 2: 0+2+4+6+8 = 20
+    mut i32 total = 0;
+    for (mut i32 k = 0; k < 10; k = k + 2) {
+        total = total + k;
+    }
+    println(total as str);        // 20
+
+    // While loop with a pre-initialized counter: 0+1+2+3 = 6
+    mut i32 w = 0;
+    mut i32 ws = 0;
+    while (w < 4) {
+        ws = ws + w;
+        w = w + 1;
+    }
+    println(ws as str);           // 6
+
+    // Loop with an early break: folded (the region is interpreted with
+    // its control flow), must stay correct
+    mut i32 s = 0;
+    for (mut i32 a = 0; a < 10; a = a + 1) {
+        if (a == 3) {
+            break;
+        }
+        s = s + a;
+    }
+    println(s as str);            // 0+1+2 = 3
+
+    // Loop with a compound condition (&& is evaluated without
+    // short-circuit in the IR): folded, must stay correct
+    mut i32 t = 0;
+    mut i32 x = 0;
+    while (x < 10 && t < 5) {
+        t = t + 1;
+    }
+    println(t as str);            // 5
+
+    // Nested loops: the whole nest is evaluated at compile time
+    mut i32 prod = 0;
+    for (mut i32 p = 0; p < 3; p = p + 1) {
+        for (mut i32 q = 0; q < 3; q = q + 1) {
+            prod = prod + 1;
+        }
+    }
+    println(prod as str);         // 3*3 = 9
+
+    return 0;
+}
