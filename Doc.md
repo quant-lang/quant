@@ -957,7 +957,7 @@ Optimizer time is the minimum of 5 runs.
 
 It reports optimizer time and resulting IR size for each optimization level.
 
-Correctness is checked separately: `scripts/check_opt.ps1` runs the test suite against every optimization level and verifies that the observable program output remains identical to `-O0`.
+Correctness is checked separately: `scripts/check_opt.py` runs the test suite against every optimization level and verifies that the observable program output remains identical to `-O0`.
 
 The native backend generates machine code directly: x86-64 (ELF/PE32+) and AArch64 (ELF). No external assembler is required. Use `--target aarch64` (or `--target arm64`) to cross-compile for AArch64. Cross-linking uses `ld.lld` for AArch64 targets.
 
@@ -982,7 +982,7 @@ Requires: CMake 3.20+, C++20 compiler.
 
 Per-platform builds live in dedicated toolchain files under `toolchains/`
 (`linux-x86_64`, `linux-aarch64`, `windows-x86_64` via MinGW-w64).
-`scripts/build-all.sh` configures and builds each of them
+`scripts/build_all.py` configures and builds each of them
 (Ninja, Release, `-j$(nproc)`) into `build-<name>/bin/qu`; cross toolchains that
 are not installed are skipped with a notice. The ZeroPoint compiler build uses
 the same AArch64 Linux toolchain as the `aarch64` build (per the ZeroPoint

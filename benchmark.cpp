@@ -16,8 +16,7 @@
 //     --md               emit Markdown tables instead of aligned text
 //
 // Runtime speed of the produced executables is measured by
-// scripts/bench_opt.ps1 / scripts/bench_opt.sh, which drive the real
-// compiler binary.
+// scripts/bench_opt.py, which drives the real compiler binary.
 
 #ifndef NOMINMAX
 #define NOMINMAX   // utils/file_manager.h pulls in <windows.h>; keep std::max usable
