@@ -1,0 +1,56 @@
+load "std::io";
+using std::io;
+
+// Compile-time numeric helper mixing ints and floats.
+f64 half(f64 x) {
+    return x / 2.0;
+}
+
+bool mixed_greater(f64 a, i32 b) {
+    return a > (b as f64);
+}
+
+// Bools cannot be cast to str/i32 in Quant, so print them via this helper.
+i32 b2i(bool b) {
+    if (b) {
+        return 1;
+    }
+    return 0;
+}
+
+i32 main() {
+    // Float arithmetic at compile time.
+    mut f64 a = #(1.5 + 2.25);
+    println(a as str);             // 3.75
+
+    mut f64 b = #(10.0 / 4.0);
+    println(b as str);             // 2.5
+
+    mut f64 c = #(2.5 * 4.0);
+    println(c as str);             // 10.0
+
+    // Mixed int/float promotes to float.
+    mut f64 d = #(1.5 + 1);
+    println(d as str);             // 2.5
+
+    // Float comparisons.
+    mut i32 e = b2i(#(3.5 > 3.25));
+    println(e as str);             // 1
+    mut i32 f = b2i(#(3.5 == 3.5));
+    println(f as str);             // 1
+
+    // Int->float and float->int casts.
+    mut f64 g = #(2 as f64 + 0.5);
+    println(g as str);             // 2.5
+    mut i32 h = #(7.9 as i32);
+    println(h as str);             // 7
+
+    // Compile-time functions doing float math.
+    mut f64 j = #half(9.0);
+    println(j as str);             // 4.5
+
+    mut i32 k = b2i(#mixed_greater(2.0, 1));
+    println(k as str);             // 1
+
+    return 0;
+}

@@ -1,0 +1,76 @@
+load "std::io";
+using std::io;
+
+// Factorial via a loop, evaluated at compile time.
+i32 factorial(i32 n) {
+    mut i32 result = 1;
+    for (mut i32 i = 1; i <= n; i = i + 1) {
+        result = result * i;
+    }
+    return result;
+}
+
+// Accumulator using a plain while loop.
+i32 sum_to(i32 n) {
+    mut i32 acc = 0;
+    mut i32 i = 0;
+    while (i <= n) {
+        acc = acc + i;
+        i = i + 1;
+    }
+    return acc;
+}
+
+// Loop with an early break.
+i32 first_multiples_sum(i32 limit) {
+    mut i32 sum = 0;
+    for (mut i32 i = 0; i < 100; i = i + 1) {
+        if (i >= limit) {
+            break;
+        }
+        sum = sum + i;
+    }
+    return sum;
+}
+
+// Loop with continue skipping odd numbers.
+i32 sum_even(i32 n) {
+    mut i32 sum = 0;
+    for (mut i32 i = 0; i <= n; i = i + 1) {
+        if (i == 3) {
+            continue;   // skip 3
+        }
+        sum = sum + i;
+    }
+    return sum;
+}
+
+// Nested loops at compile time.
+i32 nested_sum() {
+    mut i32 total = 0;
+    for (mut i32 i = 0; i < 3; i = i + 1) {
+        for (mut i32 j = 0; j < 4; j = j + 1) {
+            total = total + i * j;
+        }
+    }
+    return total;
+}
+
+i32 main() {
+    mut i32 a = #factorial(10);
+    println(a as str);                  // 3628800
+
+    mut i32 b = #sum_to(5);
+    println(b as str);                  // 0+1+2+3+4+5 = 15
+
+    mut i32 c = #first_multiples_sum(4);
+    println(c as str);                  // 0+1+2+3 = 6
+
+    mut i32 d = #sum_even(10);
+    println(d as str);                  // 0+1+2+4+5+6+7+8+9+10 = 52
+
+    mut i32 e = #nested_sum();
+    println(e as str);                  // i=0:0, i=1:6, i=2:12 -> 18
+
+    return 0;
+}

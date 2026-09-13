@@ -198,6 +198,7 @@ namespace quant::ast {
         ExprKind kind;
         SourceLocation loc;
         const Type* resolved_type = nullptr;
+        bool is_comptime = false;
     };
 
     // Statements

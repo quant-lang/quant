@@ -1,0 +1,33 @@
+load "std::io";
+using std::io;
+
+// Runtime-dependent function: reads from stdin, cannot run at compile time.
+i32 read_byte() {
+    mut str buf = "";
+    sys_read(0, buf, 1);
+    return 0;
+}
+
+// Takes a string, which stage 1 of the compile-time evaluator does not support.
+i32 string_len(str s) {
+    return 0;
+}
+
+i32 main() {
+    // Division by zero is not computable at compile time -> error.
+    mut i32 a = #(1 / 0);
+    println(a as str);
+
+    // Calls a function that performs runtime I/O -> error.
+    mut i32 b = #(read_byte());
+    println(b as str);
+
+    // Direct call to an extern (syscall) is runtime-only -> error.
+    #sys_exit(0);
+
+    // Strings are not supported in compile-time expressions -> error.
+    mut i32 c = #string_len("hello");
+    println(c as str);
+
+    return 0;
+}

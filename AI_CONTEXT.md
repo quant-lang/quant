@@ -827,3 +827,16 @@ The semantic analyzer (`semantic.cpp:1432-1446`) declares an implicit `out` vari
 ### 12. Doc.md says `void main()` in examples
 
 Doc.md shows `void main()` in the `using` example. However, the `@entry` attribute or a function named `main` with return type `i32` is the standard convention. `void main()` is valid but unusual.
+
+
+## Explicit compile-time evaluation (`#`)
+
+`#` marks an expression for AST interpretation during semantic analysis; its
+result replaces that expression with a typed literal. It is not preprocessing.
+The scalar evaluator keeps each call's locals isolated and resolves function
+bodies in their defining namespace. A void call may be used as a statement,
+but a top-level `#` expression must produce a supported scalar value.
+Integer arithmetic follows the backend's 64-bit slots; signed division overflow
+and invalid float-to-integer conversion produce compile-time diagnostics.
+The existing step (50,000,000) and call-depth (128) limits remain in force.
+Regression commands and measured performance are documented in `benchmark.md`.

@@ -1,0 +1,6 @@
+void noop() { return; }
+i32 broken() {
+    if (!noop()) { return 1; }
+    return 2;
+}
+i32 main() { return #broken(); }

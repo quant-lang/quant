@@ -105,6 +105,7 @@ namespace quant::lx {
             case '*': return make_token(match('=') ? TOKEN_STAR_EQ: TOKEN_STAR);
             case ';': return make_token(TOKEN_SEMICOLON);
             case '@': return make_token(TOKEN_AT);
+            case '#': return make_token(TOKEN_HASH);
             case '.': return make_token(TOKEN_DOT);
             case ':': return make_token(match(':') ? TOKEN_COLON_COLON: TOKEN_COLON);
             case '/':

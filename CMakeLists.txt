@@ -193,6 +193,7 @@ add_library(libquant
     src/linker/linker.cpp
     src/support/type_context.cpp
     src/support/symbol_path.cpp
+    src/comptime/evaluator.cpp
 )
 add_dependencies(libquant quant_std_embed)
 

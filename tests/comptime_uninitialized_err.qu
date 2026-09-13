@@ -1,0 +1,5 @@
+i32 uninitialized() {
+    mut i32 x;
+    return x;
+}
+i32 main() { return #uninitialized(); }

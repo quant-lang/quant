@@ -1,0 +1,42 @@
+load "std::io";
+using std::io;
+
+enum Level { Low, High };
+
+// Generic functions are evaluated with their concrete type arguments.
+i32 generic_twice<T>(T v) {
+    return (v as i32) * 2;
+}
+
+// switch runs in the compile-time interpreter.
+i32 categorize(i32 v) {
+    switch (v) {
+        case 1: { return 10; }
+        case 2: { return 20; }
+        default: { return 99; }
+    }
+}
+
+// switch over enum variants used as case values.
+i32 classify(Level l) {
+    switch (l) {
+        case Level::Low: { return 1; }
+        default: { return 2; }
+    }
+}
+
+i32 main() {
+    mut i32 a = #generic_twice<i32>(21);
+    println(a as str);                 // 42
+
+    mut i32 b = #categorize(2);
+    println(b as str);                 // 20
+
+    mut i32 c = #classify(Level::High);
+    println(c as str);                 // 2
+
+    mut i32 d = #categorize(7);
+    println(d as str);                 // 99
+
+    return 0;
+}

@@ -133,6 +133,7 @@ namespace quant::symb_t {
         sym.is_extern = fn.is_extern;
         sym.is_defined = fn.body != nullptr;
         sym.is_entry = fn.is_entry;
+        sym.func_decl = fn.body ? &fn : nullptr;
 
         sym.arg_types.reserve(fn.args.size());
 
@@ -173,6 +174,7 @@ namespace quant::symb_t {
             // upgrade forward decl -> definition
             if (!fs->is_defined && sym.is_defined) {
                 fs->is_defined = true;
+                fs->func_decl = &fn;
                 existing->attributes = fn.attributes;
             }
 
@@ -238,6 +240,7 @@ namespace quant::symb_t {
         sym.is_extern = fn.is_extern;
         sym.is_defined = fn.body != nullptr;
         sym.is_entry = fn.is_entry;
+        sym.func_decl = fn.body ? &fn : nullptr;
 
         sym.arg_types.reserve(fn.args.size());
 

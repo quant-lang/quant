@@ -139,15 +139,15 @@ OS ABI is a small, self-contained change. See
 | Semantic analysis    | completed   |
 | IR                   | completed   |
 | Native backend       | completed (Linux & Windows) |
-| Optimizations        | planned     |
-| Self-hosted compiler | planned     |
+| Optimizations        | completed     |
+| Self-hosted compiler | in progress     |
 
 ---
 
 ## Todo
 * [x] Basic optimizations
 * [x] Advanced optimizations
-* [ ] Compile time metadata
+* [x] Compile time operator ('#')
 * [ ] Windows .lib support
 * [ ] Rewrite front-end in Quant; make linking with qu & cpp in CMake and -DQUANT_FRONTEND flag
 

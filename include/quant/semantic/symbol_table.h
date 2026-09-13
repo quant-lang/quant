@@ -32,6 +32,12 @@ namespace quant::symb_t {
         bool is_extern;
         bool is_defined;
         bool is_entry;
+
+        // AST declaration of the function (used by the compile-time
+        // evaluator to interpret its body). nullptr for extern/forward
+        // declarations without a body. Forward declarations are upgraded to
+        // point at the definition when one is seen.
+        const ast::FuncStmt* func_decl = nullptr;
     };
     struct StructSymbol {
         std::vector<std::string> field_names;

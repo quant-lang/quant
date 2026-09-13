@@ -3,6 +3,7 @@
 #include "quant/semantic/symbol_table.h"
 #include "quant/support/compiler_context.h"
 #include "quant/support/symbol_path.h"
+#include "quant/comptime/evaluator.h"
 #include "quant/attributes/attributes.h"
 #include <cstdint>
 #include <cmath>
@@ -1833,6 +1834,9 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
 
     if (ty) {
         expr->resolved_type = ty;
+    }
+    if(expr->is_comptime && ty){
+        comptime::Evaluator(ctx).evaluate_and_substitute(expr);
     }
     return ty;
 }

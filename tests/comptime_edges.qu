@@ -1,0 +1,43 @@
+enum Answer { Expected };
+
+i32 read_answer() { return Expected; }
+i32 caller() {
+    mut i32 Expected = 99;
+    return read_answer();
+}
+void noop() {}
+i32 after_noop() { noop(); return 7; }
+i32 recursive(i32 n) {
+    if (n == 0) { return 0; }
+    mut i32 saved = n;
+    return recursive(n - 1) + saved;
+}
+i32 assignment_call() {
+    mut i32 x = 0;
+    x = recursive(20);
+    return x;
+}
+namespace Inner {
+    i32 helper() { return 1; }
+    i32 evaluate() { return helper(); }
+}
+i32 main() {
+    i32 Expected = 42;
+    if (#read_answer() != 0) { return 12; }
+    if (#Inner::evaluate() != 1) { return 13; }
+    if (#((1 as u32) < ((-1) as i64))) { return 14; }
+    if (#(((-1) as i32) < (1 as u64))) { return 15; }
+    if (!#(((-1) as u32) < (4294967296 as i64))) { return 16; }
+    if (#caller() != 0) { return 1; }
+    if (#after_noop() != 7) { return 2; }
+    if (#assignment_call() != 210) { return 3; }
+    if (#(false && (1 / 0 == 0))) { return 4; }
+    if (!#(true || (1 / 0 == 0))) { return 5; }
+    if (#(((-1) as u64) / (2 as u64)) != (9223372036854775807 as u64)) { return 6; }
+    if (!#(((-1) as u64) > (1 as u64))) { return 7; }
+    if (#((9223372036854775807 as i64) + (1 as i64)) != ((-9223372036854775807 as i64) - (1 as i64))) { return 8; }
+    if (#((1.0 as! i64)) != (4607182418800017408 as i64)) { return 9; }
+    if (#((4607182418800017408 as i64) as! f64) != 1.0) { return 10; }
+    if (#((1.0 as f32) as! i32) != 1065353216) { return 11; }
+    return 0;
+}

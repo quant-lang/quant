@@ -34,6 +34,7 @@ namespace quant{
         TOKEN_MUT,
         TOKEN_AT, // @
         TOKEN_DOT, // .
+        TOKEN_HASH, // #
         TOKEN_NAMESPACE,
         TOKEN_LOAD,
         TOKEN_USING,

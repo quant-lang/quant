@@ -1,0 +1,2 @@
+i32 recurse(i32 n) { return recurse(n + 1); }
+i32 main() { return #recurse(0); }

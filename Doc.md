@@ -844,6 +844,106 @@ void main() {
 
 ---
 
+## Compile-Time Evaluation (`#`)
+
+The `#` operator forces an expression to be evaluated at compile time. The result is replaced with a constant value, regardless of the optimization level
+
+```qu
+mut i32 a = #(2 + 3 * 4);   // 14, evaluated at compile time
+mut i64 b = #factorial(10); // function call evaluated at compile time
+mut bool c = #(10 > 3);     // true
+```
+
+`#` is explicit: unlike optimizer passes, it always performs the evaluation, even at `-O0`
+
+### What can be evaluated
+
+* Integer, float and bool literals, arithmetic and comparison operators.
+* Logical operators with short-circuit `&&` / `||`.
+* `sizeof` and numeric casts.
+* Local variables with compile-time known values.
+* Enum variants.
+* Calls to defined, non-`extern` functions.
+* `if` / `else`, `while` / `for`, `switch`, `break` and `continue`.
+* Generic functions with concrete type arguments.
+
+For example:
+
+```qu
+i32 factorial(i32 n) {
+    mut i32 result = 1;
+
+    while (n > 1) {
+        result *= n;
+        n -= 1;
+    }
+
+    return result;
+}
+
+i32 value = #factorial(10); // 3628800
+```
+
+### Restrictions
+
+The compile-time evaluator currently does not support:
+
+* Strings.
+* Structs and arrays.
+* Pointers and references.
+* Field or index access.
+* `extern` functions or syscalls.
+* Runtime I/O.
+
+If an expression cannot be evaluated at compile time, compilation fails:
+
+```qu
+mut i32 a = #(1 / 0);       // error: division by zero
+mut i32 b = #(read_input()); // error: cannot evaluate at compile time
+```
+
+Evaluation has a step budget to prevent non-terminating compile-time code. If the budget is exceeded, the compiler reports:
+
+```text
+cannot evaluate expression at compile time
+```
+
+### Generics
+
+`#` inside a generic function is evaluated when the generic is instantiated:
+
+```qu
+i32 size<T>() {
+    return #(sizeof(T));
+}
+
+i32 a = size<i32>(); // 4
+i32 b = size<i64>(); // 8
+```
+
+### `#` vs Optimization
+
+`#` is a language feature, while optimization is optional compiler behavior.
+
+```qu
+i32 a = #(10 * 20); // guaranteed to be computed at compile time
+i32 b = 10 * 20;   // may be folded by the optimizer
+```
+
+This means `#` can be used when compile-time evaluation is part of the program's intended behavior, not just an optimization opportunity.
+
+### Casting the Result
+
+`as` is postfix and binds tighter than `#`.
+
+```qu
+i32 value = #(2 + 2);
+```
+
+The result is computed during compilation. String conversion is currently not supported by the compile-time evaluator.
+
+---
+
 ## How to Build and Run
 
 ```

@@ -1,0 +1,44 @@
+load "std::io";
+using std::io;
+
+enum Grade {
+    Low,
+    Mid,
+    High,
+};
+
+// Compile-time helper that combines constants and parameters.
+i32 offset(i32 x) {
+    return x + 100;
+}
+
+i32 main() {
+    // Immutable locals with literal initializers are compile-time constants.
+    i32 base = 40;
+    i32 limit = 10;
+
+    mut i32 a = #(base + 2);
+    println(a as str);              // 42
+
+    mut i32 b = #(limit * limit);
+    println(b as str);              // 100
+
+    // Calls may use constants and literals.
+    mut i32 c = #offset(base);
+    println(c as str);              // 140
+
+    // Enum variants are compile-time constants and can drive '#'.
+    mut i32 d = #(Grade::High + 0);
+    println(d as str);              // 2
+    mut i32 e = #Grade::Low;
+    println(e as str);              // 0
+
+    // A compile-time result used in a runtime switch: constant folding must see it.
+    mut i32 v = #(base / 4);
+    switch (v) {
+        case 10: { println("ten"); }          // ten
+        default: { println("other"); }
+    }
+
+    return 0;
+}
