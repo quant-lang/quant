@@ -564,8 +564,11 @@ const ast::Type* resolve_struct_field(
         return nullptr;
     }
 
-    // Auto-deref references
+    // Auto-deref references and pointers
     if (base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
+        base_type = base_type->pointed;
+    }
+    if (base_type->kind == ast::TypeKind::Pointer && base_type->pointed) {
         base_type = base_type->pointed;
     }
 
@@ -1065,7 +1068,7 @@ void SemanticAnalyzer::analyze_stmt(ast::Stmt* stmt) {
     if (!stmt) return;
 
     std::visit(overloaded{
-        [&](const ast::VarDecl& n) { analyze_var_decl(n); },
+        [&](ast::VarDecl& n) { analyze_var_decl(n); },
         [&](const ast::StructDecl& n) { analyze_struct_decl(n); },
         [&](const ast::EnumDecl& n) { analyze_enum_decl(n); },
         [&](const ast::NamespaceStmt& n) { analyze_namespace_stmt(n); },
@@ -1194,7 +1197,7 @@ std::optional<int64_t> SemanticAnalyzer::eval_guard_cond(const ast::Expr* expr, 
     return std::nullopt;
 }
 
-void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
+void SemanticAnalyzer::analyze_var_decl(ast::VarDecl& var) {
     if (!var.type) {
         ctx.errors.add("Variable declaration missing type: " + var.name);
         return;
@@ -1206,6 +1209,9 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         resolved_type = ctx.types.substitute_type(var.type, *current_type_subst);
     }
     resolved_type = canonicalize_struct_type(resolved_type);
+    if ((!current_type_subst || current_type_subst->empty()) && resolved_type->kind != var.type->kind) {
+        var.type = resolved_type;
+    }
 
     for (const auto& attr : var.attributes) {
         analyze_attribute(attr, attrs::AttributeTarget::Variable);
@@ -2080,7 +2086,7 @@ const ast::Type* SemanticAnalyzer::analyze_method_call(const ast::CallExpr& call
     return fn->return_type;
 }
 
-const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
+const ast::Type* SemanticAnalyzer::resolve_lvalue(ast::Expr* expr) {
     if (!expr) {
         ctx.errors.add("Invalid lvalue");
         return nullptr;
@@ -2121,7 +2127,9 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
         const ast::Type* base_type = resolve_lvalue(field->base);
         if (!base_type) return nullptr;
 
-        return resolve_struct_field(ctx, base_type, field->field, module_namespace);
+        const ast::Type* field_type = resolve_struct_field(ctx, base_type, field->field, module_namespace);
+        expr->resolved_type = field_type;
+        return field_type;
     }
 
     if (const auto* index = std::get_if<ast::IndexExpr>(&expr->kind)) {
@@ -2910,6 +2918,7 @@ const ast::Type* SemanticAnalyzer::analyze_cast(const ast::CastExpr& n){
     if (current_type_subst && !current_type_subst->empty()) {
         target = ctx.types.substitute_type(target, *current_type_subst);
     }
+    target = canonicalize_struct_type(target);
     switch (n.kind) {
         case ast::CastKind::ValueCast:
             if (target->kind == TypeKind::String) {

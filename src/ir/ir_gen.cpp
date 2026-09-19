@@ -100,13 +100,75 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
             auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
             if (!ss) return 0;
             int total = 0;
-            for (size_t i = 0; i < ss->field_names.size(); ++i) {
-                total += 8;  // each field occupies 8 bytes (qword)
+            for (size_t i = 0; i < ss->field_types.size(); ++i) {
+                const ast::Type* ft = ss->field_types[i];
+                if (ft && ft->kind == ast::TypeKind::Struct) {
+                    total += type_size(ft, ctx);
+                } else {
+                    total += 8;  // each scalar field occupies an 8-byte qword
+                }
             }
             return total;
         }
         default: return 0;
     }
+}
+
+// Byte offsets of each 8-byte qword in a struct's inline layout (flattened
+// recursively for nested struct fields). Used for whole-struct copies.
+std::vector<uint32_t> struct_flat_offsets(
+    const ast::Type* t,
+    CompilerContext& ctx
+) {
+    std::vector<uint32_t> out;
+    std::function<void(const ast::Type*, uint32_t)> walk =
+        [&](const ast::Type* ty, uint32_t base) {
+            if (!ty || ty->kind != ast::TypeKind::Struct) {
+                out.push_back(base);
+                return;
+            }
+            auto* sym = lookup_struct(ctx, ty->struct_name);
+            if (!sym && !ty->type_args.empty()) {
+                if (ctx.types.try_instantiate(ty->struct_name, ty->type_args)) {
+                    const auto* fields = ctx.types.get_struct_fields(ty->struct_name);
+                    if (fields) {
+                        const auto* field_attrs = ctx.types.get_struct_field_attrs(ty->struct_name);
+                        ctx.symbols.declare_struct_global(
+                            ty->struct_name, *fields, {},
+                            field_attrs ? *field_attrs : std::vector<std::vector<ast::Attribute>>{}
+                        );
+                        sym = lookup_struct(ctx, ty->struct_name);
+                    }
+                }
+            }
+            auto* ss = sym ? std::get_if<quant::symb_t::StructSymbol>(&sym->data) : nullptr;
+            if (!ss) return;
+            uint32_t off = base;
+            for (size_t i = 0; i < ss->field_types.size(); ++i) {
+                const ast::Type* ft = ss->field_types[i];
+                if (ft && ft->kind == ast::TypeKind::Struct) {
+                    walk(ft, off);
+                } else {
+                    out.push_back(off);
+                }
+                off += (ft && ft->kind == ast::TypeKind::Struct) ? type_size(ft, &ctx) : 8;
+            }
+        };
+    walk(t, 0);
+    return out;
+}
+
+uint32_t struct_base_offset(
+    const quant::symb_t::StructSymbol* ss,
+    size_t index,
+    CompilerContext& ctx
+) {
+    uint32_t offset = 0;
+    for (size_t m = 0; m < index && m < ss->field_types.size(); ++m) {
+        const ast::Type* ft = ss->field_types[m];
+        offset += (ft && ft->kind == ast::TypeKind::Struct) ? type_size(ft, &ctx) : 8;
+    }
+    return offset;
 }
 
 
@@ -156,8 +218,11 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
         ctx.errors.add("Field access base type is null"); return {};
     }
 
-    // Auto-deref references
+    // Auto-deref references and pointers
     if (base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
+        base_type = base_type->pointed;
+    }
+    if (base_type->kind == ast::TypeKind::Pointer && base_type->pointed) {
         base_type = base_type->pointed;
     }
 
@@ -191,7 +256,7 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
     for (size_t i = 0; i < ss->field_names.size(); ++i) {
         if (ss->field_names[i] == field_name) {
             return {
-                static_cast<uint32_t>(i * 8u),
+                struct_base_offset(ss, i, ctx),
                 ss->field_types[i]
             };
         }
@@ -216,7 +281,7 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field_by_name(
     for (size_t i = 0; i < ss->field_names.size(); ++i) {
         if (ss->field_names[i] == field_name) {
             return {
-                static_cast<uint32_t>(i * 8u),
+                struct_base_offset(ss, i, ctx),
                 ss->field_types[i]
             };
         }
@@ -905,11 +970,11 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                     // Copy struct fields from result into local's allocated space
                     const uint32_t local_ptr = new_reg();
                     emit(IRLoadLocal{local_ptr, local});
-                    int field_count = sz / 8;
-                    for (int i = 0; i < field_count; ++i) {
+                    const auto flat = struct_flat_offsets(var_type, ctx);
+                    for (uint32_t offset : flat) {
                         const uint32_t src_val = new_reg();
-                        emit(IRGetField{src_val, value, static_cast<uint32_t>(i * 8)});
-                        emit(IRSetField{local_ptr, src_val, static_cast<uint32_t>(i * 8)});
+                        emit(IRGetField{src_val, value, offset});
+                        emit(IRSetField{local_ptr, src_val, offset});
                     }
                 }
             } else if (node.value) {
@@ -953,8 +1018,8 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                     if (sym) {
                         auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
                         if (ss) {
-                            for (size_t i = 0; i < ss->field_names.size(); ++i) {
-                                const uint32_t offset = static_cast<uint32_t>(i * 8u);
+                            const auto flat = struct_flat_offsets(current_func_return_type, ctx);
+                            for (uint32_t offset : flat) {
                                 const uint32_t tmp = new_reg();
                                 emit(IRGetField{ tmp, result_ptr, offset });
                                 emit(IRSetField{ sret_ptr, tmp, offset });
@@ -1676,9 +1741,26 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     }
                 }
 
+                // Nested field access (e.g. a.b.c.d = x): the semantic pass
+                // already resolved the intermediate expression's type.
+                if (!base_type) {
+                    base_type = field->base->resolved_type;
+                }
+
                 const auto [offset, field_type] = resolve_struct_field(ctx, base_type, field->field);
 
                 const uint32_t v = gen_expr_as(*node.value, field_type);
+
+                if (field_type && field_type->kind == ast::TypeKind::Struct) {
+                    const auto flat = struct_flat_offsets(field_type, ctx);
+                    for (uint32_t sub : flat) {
+                        const uint32_t src_val = new_reg();
+                        emit(IRGetField{src_val, v, sub});
+                        emit(IRSetField{base, src_val, static_cast<uint32_t>(offset + sub)});
+                    }
+                    return v;
+                }
+
                 emit(IRSetField{
                     base,
                     v,
@@ -1702,8 +1784,26 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 }
 
                 const ast::Type* elem_type = base_type->pointed;
-                uint32_t elem_size = type_size(elem_type);
+                uint32_t elem_size = type_size(elem_type, &ctx);
                 const uint32_t v = gen_expr_as(*node.value, elem_type);
+
+                if (elem_type && elem_type->kind == ast::TypeKind::Struct) {
+                    const uint32_t sz = new_reg();
+                    emit(IRLoadConst{sz, static_cast<int64_t>(elem_size)});
+                    const uint32_t scaled = new_reg();
+                    emit(IRBinary{IRBinaryOp::Mul, scaled, idx, sz, ast::TypeKind::U64});
+                    const uint32_t addr = new_reg();
+                    emit(IRBinary{IRBinaryOp::Add, addr, base, scaled, ast::TypeKind::U64});
+
+                    const auto flat = struct_flat_offsets(elem_type, ctx);
+                    for (uint32_t sub : flat) {
+                        const uint32_t src_val = new_reg();
+                        emit(IRGetField{src_val, v, sub});
+                        emit(IRSetField{addr, src_val, sub});
+                    }
+                    return v;
+                }
+
                 emit(IRStoreElement{base, idx, v, elem_size});
                 return v;
             }
@@ -1732,11 +1832,18 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 }
             }
 
-            const auto [offset, field_type] = resolve_struct_field(ctx, base_type, node.field);
-            (void)field_type;
+            // Nested field access (e.g. a.b.c): the semantic pass already
+            // resolved the intermediate expression's type.
+            if (!base_type) {
+                base_type = node.base->resolved_type;
+            }
 
-            // Auto-deref references for attribute lookup
-            if (base_type && base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
+            const auto [offset, field_type] = resolve_struct_field(ctx, base_type, node.field);
+
+            // Auto-deref references and pointers for attribute lookup
+            if (base_type && (base_type->kind == ast::TypeKind::Reference ||
+                              base_type->kind == ast::TypeKind::Pointer) &&
+                base_type->pointed) {
                 base_type = base_type->pointed;
             }
 
@@ -1754,6 +1861,17 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                         }
                     }
                 }
+            }
+
+            // Struct-typed fields are stored inline at their cumulative byte offset;
+            // return the address of the sub-object so chained field access /
+            // method calls keep working on the embedded data.
+            if (field_type && field_type->kind == ast::TypeKind::Struct) {
+                const uint32_t off = new_reg();
+                emit(IRLoadConst{ off, static_cast<int64_t>(offset) });
+                const uint32_t dst = new_reg();
+                emit(IRBinary{ IRBinaryOp::Add, dst, base, off, ast::TypeKind::U64 });
+                return dst;
             }
 
             const uint32_t dst = new_reg();
@@ -1854,7 +1972,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                         if (!type_expr || !type_expr->type) {
                             ctx.errors.add("First argument to alloc must be a type, e.g. alloc(i32, 10)"); return 0;
                         }
-                        uint32_t elem_size = type_size(type_expr->type);
+                        uint32_t elem_size = type_size(type_expr->type, &ctx);
                         if (elem_size == 0) {
                             ctx.errors.add("Cannot allocate element of unknown size"); return 0;
                         }
@@ -2060,7 +2178,19 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             for (size_t i = 0; i < node.args.size(); ++i) {
                 const ast::Type* field_type = (field_types && i < field_types->size()) ? (*field_types)[i] : nullptr;
                 const uint32_t val = gen_expr_as(*node.args[i], field_type);
-                emit(IRSetField{ ptr, val, static_cast<uint32_t>(i * 8) });
+                quant::symb_t::StructSymbol* ss_target =
+                    sym ? std::get_if<quant::symb_t::StructSymbol>(&sym->data) : nullptr;
+                const uint32_t foff = struct_base_offset(ss_target, i, ctx);
+                if (field_type && field_type->kind == ast::TypeKind::Struct) {
+                    const auto flat = struct_flat_offsets(field_type, ctx);
+                    for (uint32_t sub : flat) {
+                        const uint32_t src_val = new_reg();
+                        emit(IRGetField{src_val, val, sub});
+                        emit(IRSetField{ptr, src_val, static_cast<uint32_t>(foff + sub)});
+                    }
+                } else {
+                    emit(IRSetField{ ptr, val, foff });
+                }
             }
 
             return ptr;
@@ -2097,7 +2227,19 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 ctx.errors.add("Invalid pointer index in IR gen"); return 0;
             }
 
-            uint32_t elem_size = type_size(base_type->pointed);
+            const ast::Type* elem_type = base_type->pointed;
+            uint32_t elem_size = type_size(elem_type, &ctx);
+
+            if (elem_type && elem_type->kind == ast::TypeKind::Struct) {
+                const uint32_t sz = new_reg();
+                emit(IRLoadConst{sz, static_cast<int64_t>(elem_size)});
+                const uint32_t scaled = new_reg();
+                emit(IRBinary{IRBinaryOp::Mul, scaled, idx, sz, ast::TypeKind::U64});
+                const uint32_t addr = new_reg();
+                emit(IRBinary{IRBinaryOp::Add, addr, base, scaled, ast::TypeKind::U64});
+                return addr;
+            }
+
             emit(IRLoadElement{dst, base, idx, elem_size});
             return dst;
         }

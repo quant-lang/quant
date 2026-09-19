@@ -304,7 +304,12 @@ namespace {
                 if (it != structs.end()) {
                     int total = 0;
                     for (size_t i = 0; i < it->second.size(); ++i) {
-                        total += 8;
+                        const Type* ft = it->second[i].second;
+                        if (ft && ft->kind == TypeKind::Struct) {
+                            total += type_size(ft);
+                        } else {
+                            total += 8;
+                        }
                     }
                     return total;
                 }
