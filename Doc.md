@@ -958,6 +958,21 @@ qu file.qu --no-compile       # semantic analysis only
 qu file.qu -O2 -o output      # optimization level 0-3 (default: -O2)
 ```
 
+### Raw Self-hosting Demo
+
+Currently, Quant is being rewritten in Quant as a self-hosting compiler. You can either try the unfinished version of the Quant compiler written in Quant using the following CMake flag: `-DQUANT_SELF_HOSTED=true`. For example:
+
+```sh
+cmake -B build -DQUANT_SELF_HOSTED=true
+```
+
+This will build `src/self-hosted/main.qu`. Alternatively, you can just review the code in `src/self-hosted/`.
+
+**Note**
+
+> The compiler is still in progress, and the code is not finished yet.
+
+
 ### Optimization levels
 
 Quant performs optimization directly on its own IR, between IR generation and the native backend. This means the same optimizer is shared by every supported target: x86-64, AArch64, Windows and ZeroPoint.

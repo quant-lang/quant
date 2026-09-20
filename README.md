@@ -148,8 +148,20 @@ OS ABI is a small, self-contained change. See
 * [x] Basic optimizations
 * [x] Advanced optimizations
 * [x] Compile time operator ('#')
-* [ ] Windows .lib support
-* [ ] Rewrite front-end in Quant; make linking with qu & cpp in CMake and -DQUANT_FRONTEND flag
+* [ ] Windows .lib support (i'll do this in future)
+* [x] Rewrite front-end in Quant; make linking with qu & cpp in CMake and -DQUANT_FRONTEND flag
+
+---
+## Self-hosting
+* [x] front-end
+  - [x] lexer
+  - [x] parser
+* [ ] middle-end
+  - [ ] semantic
+  - [ ] comptime
+* [ ] back-end
+  - [ ] ir
+  - [ ] codegen
 
 ---
 
