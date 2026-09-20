@@ -37,7 +37,7 @@ set_property(CACHE QUANT_FRONTEND PROPERTY STRINGS "qu" "quant")
 # Self-hosted frontend integration (auto-detected at runtime).
 # When ON, the C++ compiler looks for src/self-hosted/out and spawns it
 # to parse .qu files, then deserializes the QAST output
-option(QUANT_SELF_HOSTED "Enable self-hosted Quant frontend (requires pre-built out binary)" ON)
+option(QUANT_SELF_HOSTED "Enable self-hosted Quant frontend (requires pre-built out binary)" OFF)
 
 # Backends compiled into the compiler binary. CMake answers
 # "what targets can this compiler build for?"; --target then picks one of the
