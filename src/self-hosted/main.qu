@@ -39,7 +39,8 @@ using front::ast_serialize;
         if (total >= cap) {
             mut u64 new_cap = cap * 2;
             mut *u8 new_buf = r.bump(new_cap) as! *u8;
-            for(mut u64 = 0; i < total; i++)
+            mut u64 i = 0;
+            while(i < total) {
                 new_buf[i] = buf[i];
                 i++;
             }
