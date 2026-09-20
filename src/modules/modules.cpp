@@ -88,7 +88,52 @@ Module* ModuleManager::load_entry(const fs::path& path) {
         ctx.errors.add("entry file not found: " + abs.string());
         return nullptr;
     }
+    entry_dir = fs::weakly_canonical(abs).parent_path();
     return load_module(abs);
+}
+Module* ModuleManager::register_ast(const std::string& module_name,
+                                    const fs::path& disk_path,
+                                    std::vector<ast::Stmt*> ast) {
+    // Check if already loaded
+    if (modules.count(module_name)) {
+        return modules[module_name];
+    }
+
+    auto imports = collect_imports(ast);
+
+    // Split "std::io" -> ["std", "io"]
+    std::vector<std::string> namespace_path;
+    {
+        size_t start = 0;
+        while (true) {
+            size_t sep = module_name.find("::", start);
+            if (sep == std::string::npos) {
+                namespace_path.push_back(module_name.substr(start));
+                break;
+            }
+            namespace_path.push_back(module_name.substr(start, sep - start));
+            start = sep + 2;
+        }
+    }
+
+    auto* mod = memory::make_default<Module>(ctx.module_arena);
+    mod->name = module_name;
+    mod->namespace_path = namespace_path;
+    mod->path = disk_path;
+    if (!disk_path.empty()) mod->file_paths.push_back(disk_path);
+    mod->ast = std::move(ast);
+    mod->imports = std::move(imports);
+    mod->ns = ctx.symbols.create_namespace_path(namespace_path);
+
+    modules.emplace(module_name, mod);
+
+    // Register by file key for dedup
+    std::string file_key = disk_path.empty()
+        ? "<ast>:" + module_name
+        : fs::weakly_canonical(disk_path).string();
+    loaded_files.emplace(file_key, mod);
+
+    return mod;
 }
 
 Module* ModuleManager::load_module(const fs::path& path) {
@@ -371,7 +416,7 @@ void ModuleManager::build_graph(Module* entry) {
 
                     std::vector<fs::path> bases;
                     if (!mod->path.empty()) bases.push_back(mod->path.parent_path());
-                    bases.push_back(fs::current_path());
+                    bases.push_back(entry_dir);
                     bases.push_back(ctx.root_path);
 
                     for (const auto& base : bases) {

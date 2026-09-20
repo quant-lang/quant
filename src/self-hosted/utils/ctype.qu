@@ -1,0 +1,41 @@
+load "std::types";
+using std::types;
+
+load "std::string";
+using std::string;
+
+module "utils::ctype";
+
+bool is_digit(u8 c) {
+    return c >= '0' && c <= '9';
+}
+
+bool is_alpha(u8 c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+bool is_alnum(u8 c) {
+    return is_alpha(c) || is_digit(c);
+}
+
+bool is_space(u8 c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+bool slice_eq(slice<u8> a, slice<u8> b) {
+    if (a.len() != b.len()) { return false; }
+    for (mut u64 i = 0; i < a.len(); i++) {
+        if (a.get(i) != b.get(i)) { return false; }
+    }
+    return true;
+}
+
+bool slice_eq_str(slice<u8> s, str text) {
+    u64 n = str_len(text);
+    if (s.len() != n) { return false; }
+    *u8 p = text as! *u8;
+    for (mut u64 i = 0; i < n; i++) {
+        if (s.get(i) != p[i]) { return false; }
+    }
+    return true;
+}

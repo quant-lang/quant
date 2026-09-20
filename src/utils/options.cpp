@@ -53,11 +53,19 @@ namespace utils::options{
                 opts.ar_name = argv[++i];
                 continue;
             }
-            if(arg == "--ld"){
+            if (arg == "--ld") {
                 if (i + 1 >= argc) {
                     throw std::runtime_error("Option '--ld' requires a linker (ld, lld, mold, or path)");
                 }
                 opts.linker_name = argv[++i];
+                continue;
+            }
+
+            if (arg == "--from-ast") {
+                if (i + 1 >= argc) {
+                    throw std::runtime_error("Option '--from-ast' requires a path to a QAST binary file");
+                }
+                opts.from_ast = argv[++i];
                 continue;
             }
 
@@ -116,7 +124,7 @@ namespace utils::options{
             }
         }
 
-        if (opts.input_file.empty()) {
+        if (opts.input_file.empty() && opts.from_ast.empty()) {
             throw std::runtime_error("No input file provided");
         }
 

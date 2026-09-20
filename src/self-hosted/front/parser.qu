@@ -1,0 +1,1448 @@
+// front::parser
+//
+// Self-hosted Quant analog of C++ src/frontend/parser.cpp
+// Parses a token stream (from Lexer) into the AST defined in front::ast
+
+load "std::arena";
+using std::arena;
+
+load "std::types";
+using std::types;
+
+load "std::vector";
+using std::vector;
+
+load "front::token";
+using front::token;
+
+
+load "front::ast";
+using front::ast;
+
+load "front::lexer";
+using front::lexer;
+
+load "utils::ctype";
+using utils::ctype;
+
+load "utils::escape";
+using utils::escape;
+
+load "front::ops";
+using front::ops;
+
+module "front::parser";
+
+enum DeclKind {
+    DECL_NONE,
+    DECL_VAR,
+    DECL_FUNC
+};
+
+struct ErrorNode {
+    mut slice<u8> msg;
+    mut i32 line;
+    mut i32 column;
+    mut i32 length;
+    mut *ErrorNode next;
+};
+
+struct Parser {
+    mut Lexer lexer;
+    mut Token current;
+    mut Token previous;
+    mut Vec<Token> buffer;
+    mut u64 buffer_head;
+    mut Region arena;
+    mut *StrNode current_type_params;
+    mut *ErrorNode err_head;
+    mut *ErrorNode err_tail;
+};
+
+Parser parser_init(Lexer lex, Region arena) {
+    mut Parser p;
+    p.lexer = lex;
+    p.arena = arena;
+    p.buffer_head = 0;
+    p.current_type_params = nullptr;
+    p.err_head = nullptr;
+    p.err_tail = nullptr;
+    p.current = p.lexer.next_token();
+    return p;
+}
+
+/// Low-level token helpers ///
+
+Token advance(mut *Parser p) {
+    Token prev = p.current;
+    if (p.buffer.len() > p.buffer_head) {
+        p.current = p.buffer.get(p.buffer_head as i32);
+        p.buffer_head = p.buffer_head + 1;
+    } else {
+        p.current = p.lexer.next_token();
+    }
+    p.previous = prev;
+    return prev;
+}
+
+bool check(mut *Parser p, TokenType type) {
+    return p.current.type == type;
+}
+
+bool match(mut *Parser p, TokenType type) {
+    if (!check(p, type)) return false;
+    advance(p);
+    return true;
+}
+
+Token peek(mut *Parser p, i32 n) {
+    mut u64 need = p.buffer_head + (n as u64);
+    while (p.buffer.len() <= need) {
+        p.buffer.push(p.lexer.next_token());
+    }
+    return p.buffer.get(need as i32);
+}
+
+// at_token - the token at `n` tokens forward; `n == 0` is `current`.
+Token at_token(mut *Parser p, i32 n) {
+    if (n == 0) return p.current;
+    return peek(p, n - 1);
+}
+
+Token expect(mut *Parser p, TokenType type, str msg) {
+    if (!check(p, type)) {
+        mut *ErrorNode e = p.arena.bump(#sizeof(ErrorNode)) as! *ErrorNode;
+        e.msg = slice_make<u8>(msg as! *u8, str_len(msg));
+        e.line = p.current.loc.line;
+        e.column = p.current.loc.column;
+        e.length = p.current.loc.length;
+        if (p.err_tail == nullptr) { p.err_head = e; } else { p.err_tail.next = e; }
+        p.err_tail = e;
+
+        if (type == TOKEN_LBRACE || type == TOKEN_RBRACE ||
+            type == TOKEN_SEMICOLON || type == TOKEN_RPAREN) {
+            sync(p);
+            if ((type == TOKEN_SEMICOLON || type == TOKEN_RPAREN) &&
+                check(p, TOKEN_RBRACE)) {
+                return p.current;
+            }
+        }
+
+        Token bad = p.current;
+        if (!check(p, TOKEN_EOF)) {
+            advance(p);
+        }
+        return bad;
+    }
+
+    return advance(p);
+}
+
+void sync(mut *Parser p) {
+    mut i32 nesting = 0;
+    while (!check(p, TOKEN_EOF)) {
+        if (check(p, TOKEN_SEMICOLON) && nesting == 0) return;
+        if (check(p, TOKEN_RBRACE)) {
+            if (nesting == 0) return;
+            nesting--;
+        }
+        if (check(p, TOKEN_LBRACE)) nesting++;
+        if (nesting == 0) {
+            if (check(p, TOKEN_STRUCT) || check(p, TOKEN_IF) ||
+                check(p, TOKEN_WHILE) || check(p, TOKEN_FOR) || check(p, TOKEN_SWITCH) ||
+                check(p, TOKEN_RETURN) || check(p, TOKEN_NAMESPACE) ||
+                check(p, TOKEN_BREAK) || check(p, TOKEN_CONTINUE) ||
+                check(p, TOKEN_MODULE) || check(p, TOKEN_LOAD) || check(p, TOKEN_USING) ||
+                check(p, TOKEN_AT) || check(p, TOKEN_EXTERN) || check(p, TOKEN_REGION) ||
+                check(p, TOKEN_ENUM)) {
+                return;
+            }
+        }
+        advance(p);
+    }
+}
+
+void error_at(mut *Parser p, Token t, str msg) {
+    mut *ErrorNode e = p.arena.bump(#sizeof(ErrorNode)) as! *ErrorNode;
+    e.msg = slice_make<u8>(msg as! *u8, str_len(msg));
+    e.line = t.loc.line;
+    e.column = t.loc.column;
+    e.length = t.loc.length;
+    if (p.err_tail == nullptr) { p.err_head = e; } else { p.err_tail.next = e; }
+    p.err_tail = e;
+}
+
+/// Free helpers ///
+
+// is_type_token - true if `t` can start a type: the builtin type keywords
+// plus '*' and '&' (for pointer/reference types).
+bool is_type_token(TokenType t) {
+    if (t == TOKEN_STAR) return true;
+    if (t == TOKEN_AMP) return true;
+    return t >= TOKEN_VOID && t <= TOKEN_CHAR_TYPE;
+}
+
+// prim_type - allocate a scalar/string/char TypeNode with the given kind.
+*TypeNode prim_type(mut *Parser p, TypeKind kind) {
+    mut *TypeNode t = alloc_type(p.arena);
+    t.kind = kind;
+    return t;
+}
+
+// match_prim_type - if `current` is a builtin type keyword, consume it and
+// return the corresponding TypeNode.
+*TypeNode match_prim_type(mut *Parser p) {
+    TypeKind k = primitive_type_kind(p.current.type);
+    advance(p);
+    return prim_type(p, k);
+}
+
+*ExprNode make_expr_node(mut *Parser p, ExprKind kind, i32 line, i32 column, i32 length) {
+    mut *ExprNode e = alloc_expr(p.arena);
+    e.kind = kind;
+    e.line = line;
+    e.column = column;
+    e.length = length;
+    return e;
+}
+
+*ExprNode make_binary(mut *Parser p, *ExprNode left, *ExprNode right, BinaryOp op) {
+    mut *ExprNode e = alloc_expr(p.arena);
+    e.kind = EXPR_BINARY;
+    e.lhs = left;
+    e.rhs = right;
+    e.bin_op = op;
+    e.line = left.line;
+    e.column = left.column;
+    e.length = left.length;
+    return e;
+}
+
+*ExprNode make_cast(mut *Parser p, *ExprNode value, *TypeNode target, CastKind kind) {
+    mut *ExprNode e = alloc_expr(p.arena);
+    e.kind = EXPR_CAST;
+    e.base = value;
+    e.cast_type = target;
+    e.cast_kind = kind;
+    e.line = value.line;
+    e.column = value.column;
+    e.length = value.length;
+    return e;
+}
+
+bool param_chain_has(*StrNode params, slice<u8> name) {
+    mut *StrNode p = params;
+    while (p != nullptr) {
+        if (slice_eq(p.value, name)) return true;
+        p = p.next;
+    }
+    return false;
+}
+
+*TypeNode bind_type_params(mut *Parser p, *TypeNode t, *StrNode params) {
+    if (t == nullptr) return t;
+    if (t.kind == TYPE_GENERIC) return t;
+    if (t.kind == TYPE_STRUCT) {
+        if (t.arg_head == nullptr) {
+            if (param_chain_has(params, t.struct_name)) {
+                mut *TypeNode g = alloc_type(p.arena);
+                g.kind = TYPE_GENERIC;
+                g.struct_name = t.struct_name;
+                return g;
+            }
+            return t;
+        }
+        return t;
+    }
+    if (t.kind == TYPE_POINTER || t.kind == TYPE_REFERENCE) {
+        mut *TypeNode p2 = alloc_type(p.arena);
+        p2.kind = t.kind;
+        p2.pointed = bind_type_params(p, t.pointed, params);
+        return p2;
+    }
+    return t;
+}
+
+// process_escapes - copy `raw` into the arena, expanding backslash sequences.
+str process_escapes(Region arena, slice<u8> raw) {
+    mut u64 out_len = 0;
+    mut u64 i = 0;
+    while (i < raw.len()) {
+        u8 c = raw.get(i);
+        if (c == '\\') {
+            if (i + 1 >= raw.len()) {
+                out_len++;
+            } else {
+                i++;
+                out_len++;
+            }
+        } else {
+            out_len++;
+        }
+        i++;
+    }
+    *u8 buf = arena.bump(out_len + 1) as! *u8;
+    mut u64 j = 0;
+    i = 0;
+    while (i < raw.len()) {
+        u8 c = raw.get(i);
+        if (c == '\\') {
+            if (i + 1 >= raw.len()) {
+                buf[j] = '\\';
+                j++;
+            } else {
+                i++;
+                u8 esc = raw.get(i);
+                buf[j] = escape_char(esc).unwrap_or(esc);
+                j++;
+            }
+        } else {
+            buf[j] = c;
+            j++;
+        }
+        i++;
+    }
+    buf[out_len] = 0;
+    return buf as! str;
+}
+
+// looks_like_generic_args - peek forward to decide if '<' starts generic type args
+bool looks_like_generic_args(mut *Parser p) {
+    // `current` is '<'. Scan forward with a linear index like the C++ version;
+    // depth starts at 1 because the opening '<' is `current`
+    mut i32 depth = 1;
+    mut i32 i = 0;
+    while (true) {
+        Token t = peek(p, i);
+        switch (t.type) {
+            case TOKEN_IDENT:
+            case TOKEN_COLON_COLON:
+            case TOKEN_VOID:
+            case TOKEN_BOOL:
+            case TOKEN_I8:
+            case TOKEN_I16:
+            case TOKEN_I32:
+            case TOKEN_I64:
+            case TOKEN_U8:
+            case TOKEN_U16:
+            case TOKEN_U32:
+            case TOKEN_U64:
+            case TOKEN_F32:
+            case TOKEN_F64:
+            case TOKEN_STR_TYPE:
+            case TOKEN_CHAR_TYPE:
+            case TOKEN_STAR:
+            case TOKEN_AMP:
+                break;
+            case TOKEN_LT:
+                {
+                    depth = depth + 1;
+                    break;
+                }
+            case TOKEN_GT:
+                {
+                    depth = depth - 1;
+                    if (depth == 0) {
+                        Token after = peek(p, i + 1);
+                        return after.type == TOKEN_LPAREN || after.type == TOKEN_LBRACE;
+                    }
+                    break;
+                }
+            case TOKEN_COMMA:
+                break;
+            default:
+                return false;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// Type parser ///
+
+*TypeNode parse_type(mut *Parser p, bool allow_implicit_void, *StrNode type_params) {
+    if (match(p, TOKEN_STAR)) {
+        *TypeNode base = parse_type(p, allow_implicit_void, type_params);
+        mut *TypeNode t = alloc_type(p.arena);
+        t.kind = TYPE_POINTER;
+        t.pointed = base;
+        return t;
+    }
+    if (match(p, TOKEN_AMP)) {
+        *TypeNode base = parse_type(p, allow_implicit_void, type_params);
+        mut *TypeNode t = alloc_type(p.arena);
+        t.kind = TYPE_REFERENCE;
+        t.pointed = base;
+        return t;
+    }
+
+    if (p.current.is_type())
+        return match_prim_type(p);
+
+    if (match(p, TOKEN_IDENT)) {
+        mut *u8 span_start = p.previous.text.data;
+        mut u64 total_len = p.previous.text.len();
+        while (match(p, TOKEN_COLON_COLON)) {
+            Token part = expect(p, TOKEN_IDENT, "Expected identifier after ::");
+            total_len = total_len + 2 + part.text.len();
+        }
+        slice<u8> full = slice_make<u8>(span_start, total_len);
+
+        if (type_params != nullptr) {
+            mut *StrNode tp = type_params;
+            while (tp != nullptr) {
+                if (slice_eq(tp.value, full)) {
+                    mut *TypeNode t = alloc_type(p.arena);
+                    t.kind = TYPE_GENERIC;
+                    t.struct_name = full;
+                    return t;
+                }
+                tp = tp.next;
+            }
+        }
+
+        if (match(p, TOKEN_LT)) {
+            mut *TypeNode t = alloc_type(p.arena);
+            t.kind = TYPE_STRUCT;
+            t.struct_name = full;
+            mut *TypeNode ta_tail = nullptr;
+            while (true) {
+                *TypeNode a = parse_type(p, false, type_params);
+                if (t.arg_head == nullptr) {
+                    t.arg_head = a;
+                    ta_tail = a;
+                } else {
+                    ta_tail.next = a;
+                    ta_tail = a;
+                }
+                if (!match(p, TOKEN_COMMA)) break;
+            }
+            expect(p, TOKEN_GT, "Expected '>' after type arguments");
+            return t;
+        }
+
+        mut *TypeNode t = alloc_type(p.arena);
+        t.kind = TYPE_STRUCT;
+        t.struct_name = full;
+        return t;
+    }
+
+    if (allow_implicit_void) {
+        mut *TypeNode t = alloc_type(p.arena);
+        t.kind = TYPE_VOID;
+        return t;
+    }
+
+    error_at(p, p.current, "Expected type");
+    return nullptr;
+}
+
+/// Exprs ///
+
+*ExprNode parse_prefix(mut *Parser p) {
+    if (match(p, TOKEN_NUMBER)) {
+        mut slice<u8> text = p.previous.text;
+        mut bool is_float = false;
+        for (mut u64 fi = 0; fi < text.len(); fi++) {
+            u8 fc = text.get(fi);
+            if (fc == '.' || fc == 'e' || fc == 'E') { is_float = true; break; }
+        }
+        if (is_float) {
+            f64 val = p.previous.number.unwrap_or(0.0);
+            mut *ExprNode e = make_expr_node(p, EXPR_FLOAT, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+            e.float_value = val;
+            return e;
+        }
+        mut *ExprNode e = make_expr_node(p, EXPR_INT, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.int_value = p.previous.inum as i64;
+        return e;
+    }
+
+    if (match(p, TOKEN_STRING)) {
+        mut *ExprNode e = make_expr_node(p, EXPR_STRING, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.string_value = process_escapes(p.arena, p.previous.text);
+        return e;
+    }
+
+    if (match(p, TOKEN_CHAR_LITERAL)) {
+        mut *ExprNode e = make_expr_node(p, EXPR_CHAR, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.char_value = p.previous.char_val.unwrap_or(0);
+        return e;
+    }
+
+    if (match(p, TOKEN_TRUE)) {
+        mut *ExprNode e = make_expr_node(p, EXPR_BOOL, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.bool_value = 1;
+        return e;
+    }
+
+    if (match(p, TOKEN_FALSE)) {
+        mut *ExprNode e = make_expr_node(p, EXPR_BOOL, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.bool_value = 0;
+        return e;
+    }
+
+    if (match(p, TOKEN_NULLPTR)) {
+        mut *ExprNode e = make_expr_node(p, EXPR_NULLPTR, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        return e;
+    }
+
+    if (match(p, TOKEN_HASH)) {
+        mut *ExprNode e = parse_expr(p, 10);
+        if (e == nullptr) return e;
+        e.is_comptime = true;
+        return e;
+    }
+
+    if (match(p, TOKEN_SIZEOF)) {
+        expect(p, TOKEN_LPAREN, "Expected '(' after sizeof");
+        *TypeNode type = parse_type(p, false, p.current_type_params);
+        expect(p, TOKEN_RPAREN, "Expected ')' after sizeof type");
+        mut *ExprNode e = make_expr_node(p, EXPR_SIZEOF, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.cast_type = type;
+        return e;
+    }
+
+    if (match(p, TOKEN_NOT)) {
+        *ExprNode operand = parse_expr(p, 10);
+        mut *ExprNode e = make_expr_node(p, EXPR_UNARY, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.operand = operand;
+        e.un_op = OP_NOT;
+        return e;
+    }
+
+    if (match(p, TOKEN_MINUS)) {
+        *ExprNode operand = parse_expr(p, 10);
+        mut *ExprNode e = make_expr_node(p, EXPR_UNARY, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.operand = operand;
+        e.un_op = OP_NEG;
+        return e;
+    }
+
+    if (match(p, TOKEN_AMP)) {
+        *ExprNode operand = parse_expr(p, 10);
+        mut *ExprNode e = make_expr_node(p, EXPR_UNARY, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.operand = operand;
+        e.un_op = OP_ADDR_OF;
+        return e;
+    }
+
+    if (match(p, TOKEN_IDENT)) {
+        mut *ExprNode expr = make_expr_node(p, EXPR_VAR, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        expr.name = p.previous.text;
+
+        while (match(p, TOKEN_COLON_COLON)) {
+            Token name = expect(p, TOKEN_IDENT, "Expected identifier after ::");
+            mut *ExprNode rhs = make_expr_node(p, EXPR_VAR, name.loc.line, name.loc.column, name.loc.length);
+            rhs.name = name.text;
+
+            mut *ExprNode ns = make_expr_node(p, EXPR_NAMESPACE, expr.line, expr.column, expr.length);
+            ns.lhs = expr;
+            ns.rhs = rhs;
+            expr = ns;
+        }
+
+        return expr;
+    }
+
+    if (match(p, TOKEN_LPAREN)) {
+        mut *ExprNode e = parse_expr(p, 0);
+        expect(p, TOKEN_RPAREN, "Expected ')'");
+        return e;
+    }
+
+    if (is_type_token(p.current.type)) {
+        *TypeNode type = parse_type(p, false, p.current_type_params);
+        if (type != nullptr) {
+            return make_expr_node(p, EXPR_TYPE, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        }
+    }
+
+    if (match(p, TOKEN_LBRACE)) {
+        mut *ExprNode ih = nullptr;
+        mut *ExprNode it = nullptr;
+        if (!check(p, TOKEN_RBRACE)) {
+            while (true) {
+                *ExprNode arg = parse_expr(p, 0);
+                if (ih == nullptr) { ih = arg; it = arg; } else { it.next = arg; it = arg; }
+                if (!match(p, TOKEN_COMMA)) break;
+            }
+        }
+        expect(p, TOKEN_RBRACE, "Expected '}' after struct init");
+        mut *ExprNode e = make_expr_node(p, EXPR_STRUCT_INIT, p.previous.loc.line, p.previous.loc.column, p.previous.loc.length);
+        e.arg_head = ih;
+        e.arg_tail = it;
+        return e;
+    }
+
+    error_at(p, p.current, "Unexpected token");
+    if (!check(p, TOKEN_EOF)) {
+        advance(p);
+    }
+    return nullptr;
+}
+
+*ExprNode parse_postfix(mut *Parser p, mut *ExprNode left) {
+    while (true) {
+        if (check(p, TOKEN_LT)) {
+            Token n1 = peek(p, 0);
+            if (n1.type == TOKEN_IDENT || is_type_token(n1.type)) {
+                if (looks_like_generic_args(p)) {
+                    advance(p);
+                    mut *TypeNode ta_head = nullptr;
+                    mut *TypeNode ta_tail = nullptr;
+                    while (true) {
+                        *TypeNode ta = parse_type(p, false, p.current_type_params);
+                        if (ta_head == nullptr) { ta_head = ta; ta_tail = ta; } else { ta_tail.next = ta; ta_tail = ta; }
+                        if (!match(p, TOKEN_COMMA)) break;
+                    }
+                    expect(p, TOKEN_GT, "Expected '>' after generic type arguments");
+
+                    if (check(p, TOKEN_LBRACE)) {
+                        advance(p);
+                        mut *ExprNode ih = nullptr;
+                        mut *ExprNode it = nullptr;
+                        if (!check(p, TOKEN_RBRACE)) {
+                            while (true) {
+                                *ExprNode arg = parse_expr(p, 0);
+                                if (ih == nullptr) { ih = arg; it = arg; } else { it.next = arg; it = arg; }
+                                if (!match(p, TOKEN_COMMA)) break;
+                            }
+                        }
+                        expect(p, TOKEN_RBRACE, "Expected '}' after struct init");
+                        mut *ExprNode e = make_expr_node(p, EXPR_STRUCT_INIT, left.line, left.column, left.length);
+                        e.init_type_ref = left;
+                        e.type_arg_head = ta_head;
+                        e.type_arg_tail = ta_tail;
+                        e.arg_head = ih;
+                        e.arg_tail = it;
+                        left = e;
+                        continue;
+                    }
+
+                    expect(p, TOKEN_LPAREN, "Expected '(' after generic function name");
+                    mut *ExprNode ah = nullptr;
+                    mut *ExprNode at = nullptr;
+                    if (!check(p, TOKEN_RPAREN)) {
+                        while (true) {
+                            *ExprNode arg = parse_expr(p, 0);
+                            if (ah == nullptr) { ah = arg; at = arg; } else { at.next = arg; at = arg; }
+                            if (!match(p, TOKEN_COMMA)) break;
+                        }
+                    }
+                    expect(p, TOKEN_RPAREN, "Expected ')'");
+                    mut *ExprNode e = make_expr_node(p, EXPR_CALL, left.line, left.column, left.length);
+                    e.callee = left;
+                    e.arg_head = ah;
+                    e.arg_tail = at;
+                    e.type_arg_head = ta_head;
+                    e.type_arg_tail = ta_tail;
+                    left = e;
+                    continue;
+                }
+            }
+        }
+
+        if (match(p, TOKEN_LPAREN)) {
+            mut *ExprNode ah = nullptr;
+            mut *ExprNode at = nullptr;
+            if (!check(p, TOKEN_RPAREN)) {
+                while (true) {
+                    *ExprNode arg = parse_expr(p, 0);
+                    if (ah == nullptr) { ah = arg; at = arg; } else { at.next = arg; at = arg; }
+                    if (!match(p, TOKEN_COMMA)) break;
+                }
+            }
+            expect(p, TOKEN_RPAREN, "Expected ')'");
+            mut *ExprNode e = make_expr_node(p, EXPR_CALL, left.line, left.column, left.length);
+            e.callee = left;
+            e.arg_head = ah;
+            e.arg_tail = at;
+            left = e;
+            continue;
+        }
+
+        if (match(p, TOKEN_LBRACE)) {
+            mut *ExprNode ih = nullptr;
+            mut *ExprNode it = nullptr;
+            if (!check(p, TOKEN_RBRACE)) {
+                while (true) {
+                    *ExprNode arg = parse_expr(p, 0);
+                    if (ih == nullptr) { ih = arg; it = arg; } else { it.next = arg; it = arg; }
+                    if (!match(p, TOKEN_COMMA)) break;
+                }
+            }
+            expect(p, TOKEN_RBRACE, "Expected '}' after struct init");
+            mut *ExprNode e = make_expr_node(p, EXPR_STRUCT_INIT, left.line, left.column, left.length);
+            e.init_type_ref = left;
+            e.arg_head = ih;
+            e.arg_tail = it;
+            left = e;
+            continue;
+        }
+
+        if (match(p, TOKEN_LBRACKET)) {
+            *ExprNode index = parse_expr(p, 0);
+            expect(p, TOKEN_RBRACKET, "Expected ']'");
+            mut *ExprNode e = make_expr_node(p, EXPR_INDEX, left.line, left.column, left.length);
+            e.base = left;
+            e.index = index;
+            left = e;
+            continue;
+        }
+
+        if (match(p, TOKEN_DOT)) {
+            Token field = expect(p, TOKEN_IDENT, "Expected field name after '.'");
+            mut *ExprNode e = make_expr_node(p, EXPR_FIELD, left.line, left.column, left.length);
+            e.base = left;
+            e.name = field.text;
+            left = e;
+            continue;
+        }
+
+        if (check(p, TOKEN_PLUS_PLUS) || check(p, TOKEN_MINUS_MINUS)) {
+            Token op = advance(p);
+            if (left.kind != EXPR_VAR && left.kind != EXPR_FIELD && left.kind != EXPR_INDEX) {
+                error_at(p, op, "Invalid increment/decrement target");
+                return left;
+            }
+            mut *ExprNode one = make_expr_node(p, EXPR_INT, op.loc.line, op.loc.column, op.loc.length);
+            one.int_value = 1;
+            mut TokenType base_op = TOKEN_MINUS;
+            if (op.type == TOKEN_PLUS_PLUS) base_op = TOKEN_PLUS;
+            *ExprNode bin = make_binary(p, left, one, get_op_from_token(base_op));
+            mut *ExprNode e = make_expr_node(p, EXPR_ASSIGN, left.line, left.column, left.length);
+            e.target = left;
+            e.value = bin;
+            left = e;
+            continue;
+        }
+
+        if (match(p, TOKEN_AS)) {
+            mut CastKind kind = CAST_VALUE;
+            if (match(p, TOKEN_NOT)) {
+                kind = CAST_BIT;
+            }
+            *TypeNode target = parse_type(p, false, p.current_type_params);
+            if (target == nullptr) {
+                error_at(p, p.current, "Expected type after cast");
+                return left;
+            }
+            left = make_cast(p, left, target, kind);
+            continue;
+        }
+
+        break;
+    }
+
+    return left;
+}
+
+*ExprNode parse_expr(mut *Parser p, i32 min_prec) {
+    mut *ExprNode left = parse_prefix(p);
+    if (left == nullptr) return left;
+
+    left = parse_postfix(p, left);
+
+    while (true) {
+        i32 prec = get_precedence(p.current.type);
+        if (prec < min_prec) break;
+
+        Token op = advance(p);
+
+        if (op.type == TOKEN_EQ) {
+            if (left.kind != EXPR_VAR && left.kind != EXPR_FIELD && left.kind != EXPR_INDEX) {
+                error_at(p, op, "Invalid assignment target");
+                parse_expr(p, prec);
+                return left;
+            }
+            mut *ExprNode right = parse_expr(p, prec);
+            mut *ExprNode e = make_expr_node(p, EXPR_ASSIGN, left.line, left.column, left.length);
+            e.target = left;
+            e.value = right;
+            return e;
+        }
+
+        if (op.type == TOKEN_PLUS_EQ || op.type == TOKEN_MINUS_EQ ||
+            op.type == TOKEN_STAR_EQ || op.type == TOKEN_SLASH_EQ ||
+            op.type == TOKEN_AMP_EQ || op.type == TOKEN_PIPE_EQ) {
+            mut *ExprNode rhs = parse_expr(p, prec);
+            mut TokenType base_op = TOKEN_PLUS;
+            if (op.type == TOKEN_PLUS_EQ) base_op = TOKEN_PLUS;
+            else if (op.type == TOKEN_MINUS_EQ) base_op = TOKEN_MINUS;
+            else if (op.type == TOKEN_STAR_EQ) base_op = TOKEN_STAR;
+            else if (op.type == TOKEN_SLASH_EQ) base_op = TOKEN_SLASH;
+            else if (op.type == TOKEN_AMP_EQ) base_op = TOKEN_AMP;
+            else if (op.type == TOKEN_PIPE_EQ) base_op = TOKEN_PIPE;
+
+            *ExprNode bin = make_binary(p, left, rhs, get_op_from_token(base_op));
+            mut *ExprNode e = make_expr_node(p, EXPR_ASSIGN, left.line, left.column, left.length);
+            e.target = left;
+            e.value = bin;
+            return e;
+        }
+
+        mut *ExprNode right = parse_expr(p, prec + 1);
+        left = make_binary(p, left, right, get_op_from_token(op.type));
+    }
+
+    return left;
+}
+
+/// STMTS ///
+
+*StmtNode parse_var_decl(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_VAR;
+    s.var_mut = match(p, TOKEN_MUT);
+    s.var_type = parse_type(p, false, p.current_type_params);
+    Token name = expect(p, TOKEN_IDENT, "Expected variable name");
+    s.var_name = name.text;
+    s.var_value = nullptr;
+    if (match(p, TOKEN_EQ)) {
+        s.var_value = parse_expr(p, 0);
+    }
+    expect(p, TOKEN_SEMICOLON, "Expected ';' after declaration");
+    return s;
+}
+
+void parse_func_args(mut *Parser p, mut *FuncNode fn, *StrNode type_params) {
+    if (check(p, TOKEN_RPAREN)) return;
+    while (true) {
+        mut *ArgNode arg = alloc_arg(p.arena);
+        arg.is_mut = match(p, TOKEN_MUT);
+        arg.type = parse_type(p, true, type_params);
+        Token name = expect(p, TOKEN_IDENT, "Expected argument name");
+        arg.name = name.text;
+        func_args_append(fn, arg);
+        if (!match(p, TOKEN_COMMA)) break;
+    }
+}
+
+*FuncNode parse_func(mut *Parser p, bool is_extern, slice<u8> struct_name, *StrNode outer_type_params) {
+    mut *FuncNode ret = alloc_func(p.arena);
+    ret.is_extern = is_extern;
+    ret.struct_name = struct_name;
+    ret.has_body = false;
+
+    mut *StrNode eff_params = outer_type_params;
+
+    ret.return_type = parse_type(p, false, p.current_type_params);
+
+    Token name = expect(p, TOKEN_IDENT, "Expected function name");
+    ret.name = name.text;
+
+    mut *StrNode own_params = nullptr;
+    if (match(p, TOKEN_LT)) {
+        while (true) {
+            Token param = expect(p, TOKEN_IDENT, "Expected type parameter name");
+            own_params = param_push_front(own_params, param.text, p.arena);
+            if (!match(p, TOKEN_COMMA)) break;
+        }
+        expect(p, TOKEN_GT, "Expected '>' after type parameters");
+    }
+
+    if (own_params != nullptr) {
+        mut *StrNode combined = nullptr;
+        if (eff_params != nullptr) {
+            mut *StrNode cp = eff_params;
+            while (cp != nullptr) {
+                combined = param_push_front(combined, cp.value, p.arena);
+                cp = cp.next;
+            }
+        }
+        mut *StrNode cp = own_params;
+        while (cp != nullptr) {
+            combined = param_push_front(combined, cp.value, p.arena);
+            cp = cp.next;
+        }
+        eff_params = combined;
+        ret.return_type = bind_type_params(p, ret.return_type, combined);
+    }
+
+    if (eff_params == nullptr) {
+        eff_params = p.current_type_params;
+    }
+
+    mut *StrNode saved = p.current_type_params;
+    p.current_type_params = eff_params;
+
+    expect(p, TOKEN_LPAREN, "Expected '('");
+    parse_func_args(p, ret, p.current_type_params);
+    expect(p, TOKEN_RPAREN, "Expected ')'");
+
+    if (check(p, TOKEN_LBRACE)) {
+        *BlockNode blk = parse_block(p);
+        ret.body = as_vp(blk);
+        ret.has_body = true;
+    } else {
+        expect(p, TOKEN_SEMICOLON, "Expected ';' after function declaration");
+    }
+
+    p.current_type_params = saved;
+    return ret;
+}
+
+bool attr_list_has(*AttrNode attrs, str name) {
+    mut *AttrNode a = attrs;
+    while (a != nullptr) {
+        if (slice_eq_str(a.name, name)) return true;
+        a = a.next;
+    }
+    return false;
+}
+
+*StructNode parse_struct_decl(mut *Parser p) {
+    mut *StructNode s = alloc_struct(p.arena);
+    s.name = expect(p, TOKEN_IDENT, "Expected struct name").text;
+
+    mut *StrNode struct_type_params = nullptr;
+
+    if (match(p, TOKEN_LT)) {
+        while (true) {
+            Token param = expect(p, TOKEN_IDENT, "Expected type parameter name");
+            mut *TypeNode tp = alloc_type(p.arena);
+            tp.kind = TYPE_STRUCT;
+            tp.struct_name = param.text;
+            struct_type_param_append(s, tp);
+            struct_type_params = param_push_front(struct_type_params, param.text, p.arena);
+            if (!match(p, TOKEN_COMMA)) break;
+        }
+        expect(p, TOKEN_GT, "Expected '>' after type parameters");
+    }
+
+    expect(p, TOKEN_LBRACE, "Expected '{' after struct name");
+
+    while (!check(p, TOKEN_RBRACE) && !check(p, TOKEN_EOF)) {
+        mut *AttrList attrs = parse_attributes(p);
+
+        DeclKind dk = declaration_kind(p);
+        if (dk == DECL_VAR) {
+            mut *StructMember m = alloc_member(p.arena);
+            m.is_method = false;
+            m.field_attrs = attrs.head;
+            m.field_mut = match(p, TOKEN_MUT);
+            m.field_private = attr_list_has(attrs.head, "private");
+            m.field_type = parse_type(p, false, struct_type_params);
+            Token field_name = expect(p, TOKEN_IDENT, "Expected field name");
+            m.field_name = field_name.text;
+            m.field_default = nullptr;
+            if (match(p, TOKEN_EQ)) {
+                m.field_default = parse_expr(p, 0);
+            }
+            expect(p, TOKEN_SEMICOLON, "Expected ';' after field");
+            member_push(s, m);
+        } else if (dk == DECL_FUNC) {
+            mut *FuncNode fn = parse_func(p, false, s.name, struct_type_params);
+            fn.attrs = attrs.head;
+            fn.is_private = attr_list_has(attrs.head, "private");
+            mut *StructMember m = alloc_member(p.arena);
+            m.is_method = true;
+            m.method = fn;
+            member_push(s, m);
+        } else {
+            error_at(p, p.current, "Unexpected declaration in struct body");
+            advance(p);
+        }
+    }
+
+    expect(p, TOKEN_RBRACE, "Expected '}' after struct body");
+    expect(p, TOKEN_SEMICOLON, "Expected ';' after struct body");
+    return s;
+}
+
+*AttrList parse_attributes(mut *Parser p) {
+    mut *AttrList list = alloc_attr_list(p.arena);
+    while (check(p, TOKEN_AT)) {
+        advance(p);
+        mut *AttrNode a = alloc_attr(p.arena);
+        a.name = expect(p, TOKEN_IDENT, "Expected attribute name").text;
+        if (match(p, TOKEN_LPAREN)) {
+            mut *ExprNode arg_head = nullptr;
+            mut *ExprNode arg_tail = nullptr;
+            while (!check(p, TOKEN_RPAREN) && !check(p, TOKEN_EOF)) {
+                *ExprNode arg = parse_expr(p, 0);
+                if (arg_head == nullptr) { arg_head = arg; arg_tail = arg; } else { arg_tail.next = arg; arg_tail = arg; }
+                if (!check(p, TOKEN_RPAREN)) {
+                    expect(p, TOKEN_COMMA, "Expected ',' after attribute argument");
+                }
+            }
+            expect(p, TOKEN_RPAREN, "Expected ')' after attribute arguments");
+            a.arg_head = arg_head;
+            a.arg_tail = arg_tail;
+        }
+        attr_list_push(list, a);
+    }
+    return list;
+}
+
+*StmtNode parse_if(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_IF;
+    expect(p, TOKEN_LPAREN, "Expected '('");
+    s.cond = parse_expr(p, 0);
+    expect(p, TOKEN_RPAREN, "Expected ')'");
+    s.then_blk = as_vp(parse_statement_body(p));
+    s.else_if = nullptr;
+    s.else_blk = nullptr;
+    if (match(p, TOKEN_ELSE)) {
+        if (check(p, TOKEN_IF)) {
+            advance(p);
+            s.else_if = parse_else_if(p);
+        } else {
+            s.else_blk = as_vp(parse_statement_body(p));
+        }
+    }
+    return s;
+}
+
+*StmtNode parse_else_if(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_IF;
+    expect(p, TOKEN_LPAREN, "Expected '('");
+    s.cond = parse_expr(p, 0);
+    expect(p, TOKEN_RPAREN, "Expected ')'");
+    s.then_blk = as_vp(parse_statement_body(p));
+    s.else_blk = nullptr;
+    s.else_next = nullptr;
+    if (match(p, TOKEN_ELSE)) {
+        if (check(p, TOKEN_IF)) {
+            advance(p);
+            s.else_next = parse_else_if(p);
+        } else {
+            s.else_blk = as_vp(parse_statement_body(p));
+        }
+    }
+    return s;
+}
+
+*StmtNode parse_while(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_WHILE;
+    expect(p, TOKEN_LPAREN, "Expected '('");
+    s.cond = parse_expr(p, 0);
+    expect(p, TOKEN_RPAREN, "Expected ')'");
+    s.block = as_vp(parse_statement_body(p));
+    return s;
+}
+
+*StmtNode parse_for(mut *Parser p) {
+    mut *StmtNode for_loc = alloc_stmt(p.arena);
+    for_loc.kind = STMT_BLOCK;
+    for_loc.line = p.previous.loc.line;
+    for_loc.column = p.previous.loc.column;
+    for_loc.length = p.previous.loc.length;
+
+    expect(p, TOKEN_LPAREN, "Expected '(' after for");
+
+    mut *StmtNode init_stmt = nullptr;
+    if (!check(p, TOKEN_SEMICOLON)) {
+        if (declaration_kind(p) == DECL_VAR) {
+            init_stmt = parse_var_decl(p);
+        } else {
+            init_stmt = alloc_stmt(p.arena);
+            init_stmt.kind = STMT_EXPR;
+            init_stmt.expr = parse_expr(p, 0);
+            expect(p, TOKEN_SEMICOLON, "Expected ';' after for initializer");
+        }
+    } else {
+        expect(p, TOKEN_SEMICOLON, "Expected ';' after for initializer");
+    }
+
+    mut *ExprNode cond = nullptr;
+    if (!check(p, TOKEN_SEMICOLON)) {
+        cond = parse_expr(p, 0);
+    }
+    expect(p, TOKEN_SEMICOLON, "Expected ';' after for condition");
+
+    mut *ExprNode step = nullptr;
+    if (!check(p, TOKEN_RPAREN)) {
+        step = parse_expr(p, 0);
+    }
+    expect(p, TOKEN_RPAREN, "Expected ')' after for clauses");
+
+    mut *BlockNode body = parse_statement_body(p);
+
+    mut *BlockNode outer = alloc_block(p.arena);
+    if (init_stmt != nullptr) {
+        block_push(outer, init_stmt);
+    }
+
+    mut *StmtNode while_node = alloc_stmt(p.arena);
+    while_node.kind = STMT_WHILE;
+    while_node.cond = cond;
+    while_node.block = as_vp(body);
+    while_node.for_step = step;
+
+    block_push(outer, while_node);
+    for_loc.block = as_vp(outer);
+    return for_loc;
+}
+
+*StmtNode parse_switch(mut *Parser p) {
+    mut *StmtNode swit = alloc_stmt(p.arena);
+    swit.kind = STMT_SWITCH;
+    swit.line = p.previous.loc.line;
+    swit.column = p.previous.loc.column;
+    swit.length = p.previous.loc.length;
+
+    expect(p, TOKEN_LPAREN, "Expected '(' after switch");
+    swit.expr = parse_expr(p, 0);
+    expect(p, TOKEN_RPAREN, "Expected ')'");
+
+    expect(p, TOKEN_LBRACE, "Expected '{' after switch condition");
+
+    while (!check(p, TOKEN_RBRACE) && !check(p, TOKEN_EOF)) {
+        if (match(p, TOKEN_CASE)) {
+            mut *SwitchCase cs = alloc_case(p.arena);
+            while (true) {
+                case_values_append(cs, parse_expr(p, 0));
+                expect(p, TOKEN_COLON, "Expected ':' after case value");
+                if (!check(p, TOKEN_CASE)) break;
+                advance(p);
+            }
+            cs.body = as_vp(parse_statement_body(p));
+            switch_case_push(swit, cs);
+        } else if (match(p, TOKEN_DEFAULT)) {
+            if (swit.default_blk != (0 as! *void)) {
+                error_at(p, p.previous, "Multiple 'default' blocks in switch");
+            }
+            expect(p, TOKEN_COLON, "Expected ':' after default");
+            swit.default_blk = as_vp(parse_statement_body(p));
+        } else {
+            error_at(p, p.current, "Expected 'case' or 'default' in switch body");
+            while (!check(p, TOKEN_EOF) && !check(p, TOKEN_CASE) &&
+                   !check(p, TOKEN_DEFAULT) && !check(p, TOKEN_RBRACE)) {
+                advance(p);
+            }
+        }
+    }
+
+    expect(p, TOKEN_RBRACE, "Expected '}' after switch body");
+    return swit;
+}
+
+*StmtNode parse_return(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_RETURN;
+    s.line = p.previous.loc.line;
+    s.column = p.previous.loc.column;
+    s.length = p.previous.loc.length;
+    s.expr = nullptr;
+    if (!check(p, TOKEN_SEMICOLON)) {
+        s.expr = parse_expr(p, 0);
+    }
+    expect(p, TOKEN_SEMICOLON, "Expected ';'");
+    return s;
+}
+
+// skip_generic_args - advance a token index past a balanced `<...>` type-arg
+// list starting at `i`. Returns the index after the closing '>', or none if
+// the list runs into EOF or ';' (malformed).
+option<i32> skip_generic_args(mut *Parser p, mut i32 i) {
+    if (at_token(p, i).type != TOKEN_LT) return option_some<i32>(i);
+    mut i32 depth = 1;
+    i++;
+    while (depth > 0) {
+        Token p2 = at_token(p, i);
+        if (p2.type == TOKEN_LT) depth++;
+        else if (p2.type == TOKEN_GT) depth--;
+        else if (p2.type == TOKEN_EOF || p2.type == TOKEN_SEMICOLON) return option_none<i32>();
+        i++;
+    }
+    return option_some<i32>(i);
+}
+
+DeclKind declaration_kind(mut *Parser p) {
+    mut i32 i = 0;
+    if (at_token(p, i).type == TOKEN_MUT) { i++; }
+
+    while (at_token(p, i).type == TOKEN_STAR || at_token(p, i).type == TOKEN_AMP) { i++; }
+
+    Token t = at_token(p, i);
+    if (t.is_type()) {
+        i++;
+    } else if (t.type == TOKEN_IDENT) {
+        i++;
+        while (at_token(p, i).type == TOKEN_COLON_COLON) {
+            if (at_token(p, i + 1).type != TOKEN_IDENT) { return DECL_NONE; }
+            i += 2;
+        }
+        option<i32> after = skip_generic_args(p, i);
+        if (after.is_none()) { return DECL_NONE; }
+        i = after.unwrap();
+    } else {
+        return DECL_NONE;
+    }
+
+    if (at_token(p, i).type != TOKEN_IDENT) { return DECL_NONE; }
+    i++;
+
+    option<i32> after2 = skip_generic_args(p, i);
+    if (after2.is_none()) { return DECL_NONE; }
+    i = after2.unwrap();
+
+    if (at_token(p, i).type == TOKEN_LPAREN) {
+        return DECL_FUNC;
+    }
+    return DECL_VAR;
+}
+
+*StmtNode parse_namespace_stmt(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_NAMESPACE;
+    s.block_name = expect(p, TOKEN_IDENT, "Expected namespace name").text;
+    s.block = as_vp(parse_block(p));
+    return s;
+}
+
+*StmtNode parse_region(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_REGION;
+    s.block_name = expect(p, TOKEN_IDENT, "Expected region name").text;
+    s.block = as_vp(parse_block(p));
+    return s;
+}
+
+*StmtNode parse_module_decl(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_MODULE;
+    s.module_name = expect(p, TOKEN_STRING, "Expected module name").text;
+    expect(p, TOKEN_SEMICOLON, "Expected ';' after module");
+    return s;
+}
+
+*StmtNode parse_load(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_LOAD;
+    s.module_name = expect(p, TOKEN_STRING, "Expected module").text;
+    expect(p, TOKEN_SEMICOLON, "Expected ';' after load");
+    return s;
+}
+
+*StmtNode parse_using(mut *Parser p) {
+    mut *StmtNode s = alloc_stmt(p.arena);
+    s.kind = STMT_USING;
+
+    Token first = expect(p, TOKEN_IDENT, "Expected identifier after using");
+    mut *u8 span_start = first.text.data;
+    mut u64 total_len = first.text.len();
+    while (match(p, TOKEN_COLON_COLON)) {
+        Token part = expect(p, TOKEN_IDENT, "Expected identifier after ::");
+        total_len = total_len + 2 + part.text.len();
+    }
+    s.using_path = slice_make<u8>(span_start, total_len);
+
+    expect(p, TOKEN_SEMICOLON, "Expected ';' after using");
+    return s;
+}
+
+*EnumNode parse_enum_decl(mut *Parser p) {
+    mut *EnumNode e = alloc_enum(p.arena);
+    e.name = expect(p, TOKEN_IDENT, "Expected enum name").text;
+    expect(p, TOKEN_LBRACE, "Expected '{' after enum name");
+
+    while (!check(p, TOKEN_RBRACE) && !check(p, TOKEN_EOF)) {
+        Token name = expect(p, TOKEN_IDENT, "Expected variant name");
+        mut *StrNode v = alloc_str(p.arena);
+        v.value = name.text;
+        enum_variant_push(e, v);
+
+        if (!check(p, TOKEN_RBRACE)) {
+            expect(p, TOKEN_COMMA, "Expected ',' after variant");
+        }
+    }
+
+    expect(p, TOKEN_RBRACE, "Expected '}' after enum body");
+    expect(p, TOKEN_SEMICOLON, "Expected ';' after enum body");
+    return e;
+}
+
+*BlockNode parse_block(mut *Parser p) {
+    mut *BlockNode block = alloc_block(p.arena);
+    if (!check(p, TOKEN_LBRACE)) {
+        error_at(p, p.current, "Expected '{'");
+        return block;
+    }
+    advance(p);
+
+    while (!check(p, TOKEN_RBRACE) && !check(p, TOKEN_EOF)) {
+        block_push(block, parse_statement(p));
+    }
+
+    if (!check(p, TOKEN_RBRACE)) {
+        error_at(p, p.current, "Expected '}'");
+        return block;
+    }
+    advance(p);
+
+    return block;
+}
+
+*BlockNode parse_statement_body(mut *Parser p) {
+    mut *BlockNode block = alloc_block(p.arena);
+    if (check(p, TOKEN_LBRACE)) {
+        advance(p);
+        while (!check(p, TOKEN_RBRACE) && !check(p, TOKEN_EOF)) {
+            block_push(block, parse_statement(p));
+        }
+        expect(p, TOKEN_RBRACE, "Expected '}'");
+        return block;
+    }
+    block_push(block, parse_statement(p));
+    return block;
+}
+
+*StmtNode parse_statement(mut *Parser p) {
+    mut *AttrList attrs = alloc_attr_list(p.arena);
+    if (check(p, TOKEN_AT)) {
+        attrs = parse_attributes(p);
+    }
+    switch (p.current.type) {
+        case TOKEN_RETURN: {
+            advance(p);
+            mut *StmtNode s = parse_return(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_BREAK: {
+            advance(p);
+            mut *StmtNode s = alloc_stmt(p.arena);
+            s.kind = STMT_BREAK;
+            s.line = p.previous.loc.line;
+            s.column = p.previous.loc.column;
+            s.length = p.previous.loc.length;
+            s.attrs = attrs.head;
+            expect(p, TOKEN_SEMICOLON, "Expected ';' after break");
+            return s;
+        }
+        case TOKEN_CONTINUE: {
+            advance(p);
+            mut *StmtNode s = alloc_stmt(p.arena);
+            s.kind = STMT_CONTINUE;
+            s.line = p.previous.loc.line;
+            s.column = p.previous.loc.column;
+            s.length = p.previous.loc.length;
+            s.attrs = attrs.head;
+            expect(p, TOKEN_SEMICOLON, "Expected ';' after continue");
+            return s;
+        }
+        case TOKEN_IF: {
+            advance(p);
+            mut *StmtNode s = parse_if(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_SWITCH: {
+            advance(p);
+            mut *StmtNode s = parse_switch(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_WHILE: {
+            advance(p);
+            mut *StmtNode s = parse_while(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_FOR: {
+            advance(p);
+            mut *StmtNode s = parse_for(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_EXTERN: {
+            advance(p);
+            mut *FuncNode fn = parse_func(p, true, slice_empty<u8>(), p.current_type_params);
+            fn.attrs = attrs.head;
+            mut *StmtNode s = alloc_stmt(p.arena);
+            s.kind = STMT_FUNC;
+            s.func_node = fn;
+            return s;
+        }
+        case TOKEN_STRUCT: {
+            advance(p);
+            mut *StructNode sd = parse_struct_decl(p);
+            mut *StmtNode s = alloc_stmt(p.arena);
+            s.kind = STMT_STRUCT;
+            s.struct_node = sd;
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_NAMESPACE: {
+            advance(p);
+            mut *StmtNode s = parse_namespace_stmt(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_MODULE: {
+            advance(p);
+            mut *StmtNode s = parse_module_decl(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_LOAD: {
+            advance(p);
+            mut *StmtNode s = parse_load(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_USING: {
+            advance(p);
+            mut *StmtNode s = parse_using(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_REGION: {
+            advance(p);
+            mut *StmtNode s = parse_region(p);
+            s.attrs = attrs.head;
+            return s;
+        }
+        case TOKEN_ENUM: {
+            advance(p);
+            mut *EnumNode ed = parse_enum_decl(p);
+            mut *StmtNode s = alloc_stmt(p.arena);
+            s.kind = STMT_ENUM;
+            s.enum_node = ed;
+            s.attrs = attrs.head;
+            return s;
+        }
+        default: {
+            DeclKind dk = declaration_kind(p);
+            if (dk == DECL_FUNC) {
+                mut *FuncNode fn = parse_func(p, false, slice_empty<u8>(), p.current_type_params);
+                fn.attrs = attrs.head;
+                mut *StmtNode s = alloc_stmt(p.arena);
+                s.kind = STMT_FUNC;
+                s.func_node = fn;
+                return s;
+            }
+            if (dk == DECL_VAR) {
+                mut *StmtNode s = parse_var_decl(p);
+                s.attrs = attrs.head;
+                return s;
+            }
+
+            mut *StmtNode s = alloc_stmt(p.arena);
+            s.kind = STMT_EXPR;
+            s.expr = parse_expr(p, 0);
+            s.attrs = attrs.head;
+            expect(p, TOKEN_SEMICOLON, "Expected ';' after expression");
+            return s;
+        }
+    }
+}
+
+// Entry point
+
+*ModuleBody parse(mut *Parser p) {
+    mut *ModuleBody body = alloc_mod_body(p.arena);
+
+    while (!check(p, TOKEN_EOF)) {
+        mut *StmtNode stmt = parse_statement(p);
+        module_push(body, stmt);
+    }
+
+    return body;
+}

@@ -1,0 +1,8 @@
+module "utils::logger";
+
+struct SourceLocation {
+    str file = "<unknown>";
+    i32 line = 0;
+    i32 column = 0;
+    i32 length = 0;
+};

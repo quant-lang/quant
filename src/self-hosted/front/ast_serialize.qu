@@ -1,0 +1,480 @@
+/* front::ast_serialize
+   Binary AST serializer. Writes QAST binary format to stdout.
+*/
+
+load "std::io";
+using std::io;
+
+load "std::types";
+using std::types;
+
+load "front::ast";
+using front::ast;
+
+module "front::ast_serialize";
+
+// ---------------------------------------------------------------------------
+// Helpers: enum/bool to u8 (Quant 'as' only works for numeric types)
+
+u8 b2u8(bool b) {
+    if (b) { return 1; }
+    return 0;
+}
+
+u8 stmt_tag(StmtKind k) {
+    if (k == STMT_EXPR) { return 0; }
+    if (k == STMT_RETURN) { return 1; }
+    if (k == STMT_BREAK) { return 2; }
+    if (k == STMT_CONTINUE) { return 3; }
+    if (k == STMT_IF) { return 4; }
+    if (k == STMT_WHILE) { return 5; }
+    if (k == STMT_BLOCK) { return 6; }
+    if (k == STMT_SWITCH) { return 7; }
+    if (k == STMT_VAR) { return 8; }
+    if (k == STMT_STRUCT) { return 9; }
+    if (k == STMT_FUNC) { return 10; }
+    if (k == STMT_NAMESPACE) { return 11; }
+    if (k == STMT_REGION) { return 12; }
+    if (k == STMT_ENUM) { return 13; }
+    if (k == STMT_MODULE) { return 14; }
+    if (k == STMT_LOAD) { return 15; }
+    if (k == STMT_USING) { return 16; }
+    return 0;
+}
+
+u8 expr_tag(ExprKind k) {
+    if (k == EXPR_INT) { return 0; }
+    if (k == EXPR_BOOL) { return 1; }
+    if (k == EXPR_NULLPTR) { return 2; }
+    if (k == EXPR_FLOAT) { return 3; }
+    if (k == EXPR_STRING) { return 4; }
+    if (k == EXPR_CHAR) { return 5; }
+    if (k == EXPR_VAR) { return 6; }
+    if (k == EXPR_BINARY) { return 7; }
+    if (k == EXPR_UNARY) { return 8; }
+    if (k == EXPR_ASSIGN) { return 9; }
+    if (k == EXPR_CALL) { return 10; }
+    if (k == EXPR_FIELD) { return 11; }
+    if (k == EXPR_NAMESPACE) { return 12; }
+    if (k == EXPR_CAST) { return 13; }
+    if (k == EXPR_TYPE) { return 14; }
+    if (k == EXPR_INDEX) { return 15; }
+    if (k == EXPR_STRUCT_INIT) { return 16; }
+    if (k == EXPR_SIZEOF) { return 17; }
+    return 0;
+}
+
+u8 type_tag(TypeKind k) {
+    if (k == TYPE_VOID) { return 0; }
+    if (k == TYPE_BOOL) { return 1; }
+    if (k == TYPE_I8) { return 2; }
+    if (k == TYPE_I16) { return 3; }
+    if (k == TYPE_I32) { return 4; }
+    if (k == TYPE_I64) { return 5; }
+    if (k == TYPE_U8) { return 6; }
+    if (k == TYPE_U16) { return 7; }
+    if (k == TYPE_U32) { return 8; }
+    if (k == TYPE_U64) { return 9; }
+    if (k == TYPE_F32) { return 10; }
+    if (k == TYPE_F64) { return 11; }
+    if (k == TYPE_STRING) { return 12; }
+    if (k == TYPE_STRUCT) { return 13; }
+    if (k == TYPE_POINTER) { return 14; }
+    if (k == TYPE_REFERENCE) { return 15; }
+    if (k == TYPE_NULLPTR) { return 16; }
+    if (k == TYPE_GENERIC) { return 17; }
+    return 0;
+}
+
+u8 binop_tag(BinaryOp k) {
+    if (k == OP_ADD) { return 0; }
+    if (k == OP_SUB) { return 1; }
+    if (k == OP_MUL) { return 2; }
+    if (k == OP_DIV) { return 3; }
+    if (k == OP_EQ) { return 4; }
+    if (k == OP_NEQ) { return 5; }
+    if (k == OP_LT) { return 6; }
+    if (k == OP_LTE) { return 7; }
+    if (k == OP_GT) { return 8; }
+    if (k == OP_GTE) { return 9; }
+    if (k == OP_BIT_AND) { return 10; }
+    if (k == OP_BIT_OR) { return 11; }
+    if (k == OP_LOGIC_AND) { return 12; }
+    if (k == OP_LOGIC_OR) { return 13; }
+    return 0;
+}
+
+u8 unop_tag(UnaryOp k) {
+    if (k == OP_NEG) { return 0; }
+    if (k == OP_NOT) { return 1; }
+    if (k == OP_ADDR_OF) { return 2; }
+    return 0;
+}
+
+u8 cast_tag(CastKind k) {
+    if (k == CAST_VALUE) { return 0; }
+    if (k == CAST_BIT) { return 1; }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Buffered writer
+
+struct BufWriter {
+    mut *u8 buf;
+    mut u64 pos;
+    mut u64 cap;
+};
+
+void bw_flush(mut *BufWriter w) {
+    if (w.pos > 0) {
+        sys_write(1, w.buf as! str, w.pos as i64);
+        w.pos = 0;
+    }
+}
+
+void bw_byte(mut *BufWriter w, u8 v) {
+    if (w.pos >= w.cap) { bw_flush(w); }
+    w.buf[w.pos] = v;
+    w.pos = w.pos + 1;
+}
+
+void bw_u32(mut *BufWriter w, u32 v) {
+    bw_byte(w, v as u8);
+    bw_byte(w, (v / 256) as u8);
+    bw_byte(w, (v / 65536) as u8);
+    bw_byte(w, (v / 16777216) as u8);
+}
+
+void bw_i32(mut *BufWriter w, i32 v) {
+    bw_u32(w, v as u32);
+}
+
+void bw_u64(mut *BufWriter w, u64 v) {
+    bw_u32(w, v as u32);
+    bw_u32(w, (v / 4294967296) as u32);
+}
+
+void bw_i64(mut *BufWriter w, i64 v) {
+    bw_u64(w, v as u64);
+}
+
+void bw_f64(mut *BufWriter w, f64 v) {
+    bw_i64(w, v as! i64);
+}
+
+void bw_str(mut *BufWriter w, slice<u8> s) {
+    bw_u32(w, s.len() as u32);
+    for (mut u64 i = 0; i < s.len(); i++) {
+        bw_byte(w, s.get(i));
+    }
+}
+
+void bw_cstr(mut *BufWriter w, str s) {
+    mut i64 len = strlen(s);
+    bw_u32(w, len as u32);
+    mut *u8 p = s as! *u8;
+    for (mut i64 i = 0; i < len; i++) {
+        bw_byte(w, p[i] as u8);
+    }
+}
+
+void bw_opt_str(mut *BufWriter w, slice<u8> s) {
+    if (s.len() == 0) {
+        bw_byte(w, 0);
+    } else {
+        bw_byte(w, 1);
+        bw_str(w, s);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Recursive serializers
+
+void ser_type(mut *BufWriter w, *TypeNode t);
+
+void ser_type(mut *BufWriter w, *TypeNode t) {
+    if (t == nullptr) { bw_byte(w, 0); return; }
+    bw_byte(w, 1);
+    bw_byte(w, type_tag(t.kind));
+    bw_opt_str(w, t.struct_name);
+    ser_type(w, t.pointed);
+    mut u32 arg_count = 0;
+    mut *TypeNode a = t.arg_head;
+    while (a != nullptr) { arg_count = arg_count + 1; a = a.next; }
+    bw_u32(w, arg_count);
+    a = t.arg_head;
+    while (a != nullptr) { ser_type(w, a); a = a.next; }
+}
+
+void ser_expr(mut *BufWriter w, *ExprNode e);
+
+void ser_expr(mut *BufWriter w, *ExprNode e) {
+    if (e == nullptr) { bw_byte(w, 0); return; }
+    bw_byte(w, 1);
+    bw_byte(w, expr_tag(e.kind));
+    bw_i32(w, e.line);
+    bw_i32(w, e.column);
+    bw_i32(w, e.length);
+    bw_byte(w, b2u8(e.is_comptime));
+
+    if (e.kind == EXPR_INT) {
+        bw_i64(w, e.int_value);
+    } else if (e.kind == EXPR_BOOL) {
+        bw_byte(w, e.bool_value as u8);
+    } else if (e.kind == EXPR_FLOAT) {
+        bw_f64(w, e.float_value);
+    } else if (e.kind == EXPR_STRING) {
+        bw_cstr(w, e.string_value);
+    } else if (e.kind == EXPR_CHAR) {
+        bw_byte(w, e.char_value);
+    } else if (e.kind == EXPR_VAR) {
+        bw_str(w, e.name);
+    } else if (e.kind == EXPR_BINARY) {
+        bw_byte(w, binop_tag(e.bin_op));
+        ser_expr(w, e.lhs);
+        ser_expr(w, e.rhs);
+    } else if (e.kind == EXPR_UNARY) {
+        bw_byte(w, unop_tag(e.un_op));
+        ser_expr(w, e.operand);
+    } else if (e.kind == EXPR_ASSIGN) {
+        ser_expr(w, e.target);
+        ser_expr(w, e.value);
+    } else if (e.kind == EXPR_CALL) {
+        ser_expr(w, e.callee);
+        mut u32 argc = 0;
+        mut *ExprNode ae = e.arg_head;
+        while (ae != nullptr) { argc = argc + 1; ae = ae.next; }
+        bw_u32(w, argc);
+        ae = e.arg_head;
+        while (ae != nullptr) { ser_expr(w, ae); ae = ae.next; }
+        mut u32 tac = 0;
+        mut *TypeNode ta = e.type_arg_head;
+        while (ta != nullptr) { tac = tac + 1; ta = ta.next; }
+        bw_u32(w, tac);
+        ta = e.type_arg_head;
+        while (ta != nullptr) { ser_type(w, ta); ta = ta.next; }
+    } else if (e.kind == EXPR_FIELD) {
+        ser_expr(w, e.base);
+        bw_str(w, e.name);
+    } else if (e.kind == EXPR_NAMESPACE) {
+        ser_expr(w, e.lhs);
+        ser_expr(w, e.rhs);
+    } else if (e.kind == EXPR_CAST) {
+        ser_expr(w, e.value);
+        ser_type(w, e.cast_type);
+        bw_byte(w, cast_tag(e.cast_kind));
+    } else if (e.kind == EXPR_TYPE) {
+        ser_type(w, e.cast_type);
+    } else if (e.kind == EXPR_INDEX) {
+        ser_expr(w, e.base);
+        ser_expr(w, e.index);
+    } else if (e.kind == EXPR_STRUCT_INIT) {
+        bw_str(w, e.name);
+        ser_expr(w, e.init_type_ref);
+        mut u32 argc = 0;
+        mut *ExprNode ae = e.arg_head;
+        while (ae != nullptr) { argc = argc + 1; ae = ae.next; }
+        bw_u32(w, argc);
+        ae = e.arg_head;
+        while (ae != nullptr) { ser_expr(w, ae); ae = ae.next; }
+        mut u32 tac = 0;
+        mut *TypeNode ta = e.type_arg_head;
+        while (ta != nullptr) { tac = tac + 1; ta = ta.next; }
+        bw_u32(w, tac);
+        ta = e.type_arg_head;
+        while (ta != nullptr) { ser_type(w, ta); ta = ta.next; }
+    } else if (e.kind == EXPR_SIZEOF) {
+        ser_type(w, e.cast_type);
+    }
+}
+
+void ser_block(mut *BufWriter w, *void blk);
+
+void ser_block(mut *BufWriter w, *void blk) {
+    if (blk == nullptr) { bw_byte(w, 0); return; }
+    bw_byte(w, 1);
+    mut *BlockNode b = blk as! *BlockNode;
+    bw_u64(w, b.count);
+    mut *StmtNode s = b.head;
+    while (s != nullptr) {
+        ser_stmt(w, s);
+        s = s.next;
+    }
+}
+
+void ser_stmt(mut *BufWriter w, *StmtNode s);
+
+void ser_if_chain(mut *BufWriter w, *StmtNode elif) {
+    if (elif == nullptr) { bw_byte(w, 0); return; }
+    bw_byte(w, 1);
+    ser_expr(w, elif.cond);
+    ser_block(w, elif.then_blk);
+    ser_block(w, elif.else_blk);
+    ser_if_chain(w, elif.else_next);
+}
+
+void ser_switch_cases(mut *BufWriter w, *SwitchCase c) {
+    mut u32 count = 0;
+    mut *SwitchCase cc = c;
+    while (cc != nullptr) { count = count + 1; cc = cc.next; }
+    bw_u32(w, count);
+    cc = c;
+    while (cc != nullptr) {
+        mut u32 vc = 0;
+        mut *ExprNode ve = cc.value_head;
+        while (ve != nullptr) { vc = vc + 1; ve = ve.next; }
+        bw_u32(w, vc);
+        ve = cc.value_head;
+        while (ve != nullptr) { ser_expr(w, ve); ve = ve.next; }
+        ser_block(w, cc.body);
+        cc = cc.next;
+    }
+}
+
+void ser_args(mut *BufWriter w, *ArgNode head) {
+    mut u32 count = 0;
+    mut *ArgNode a = head;
+    while (a != nullptr) { count = count + 1; a = a.next; }
+    bw_u32(w, count);
+    a = head;
+    while (a != nullptr) {
+        bw_str(w, a.name);
+        ser_type(w, a.type);
+        bw_byte(w, b2u8(a.is_mut));
+        a = a.next;
+    }
+}
+
+void ser_func_inner(mut *BufWriter w, *FuncNode f) {
+    bw_str(w, f.name);
+    bw_i32(w, f.line);
+    bw_i32(w, f.column);
+    bw_i32(w, f.length);
+    ser_type(w, f.return_type);
+    ser_args(w, f.args_head);
+    bw_byte(w, b2u8(f.is_extern));
+    bw_byte(w, b2u8(f.has_body));
+    bw_byte(w, b2u8(f.is_entry));
+    bw_byte(w, b2u8(f.is_forward));
+    bw_byte(w, b2u8(f.is_private));
+    bw_opt_str(w, f.struct_name);
+    ser_block(w, f.body);
+    mut u32 tpc = 0;
+    mut *TypeNode tp = f.type_param_head;
+    while (tp != nullptr) { tpc = tpc + 1; tp = tp.next; }
+    bw_u32(w, tpc);
+    tp = f.type_param_head;
+    while (tp != nullptr) { ser_type(w, tp); tp = tp.next; }
+}
+
+void ser_members(mut *BufWriter w, *StructMember m) {
+    mut u32 count = 0;
+    mut *StructMember mm = m;
+    while (mm != nullptr) { count = count + 1; mm = mm.next; }
+    bw_u32(w, count);
+    mm = m;
+    while (mm != nullptr) {
+        bw_byte(w, b2u8(mm.is_method));
+        if (mm.is_method) {
+            ser_func_inner(w, mm.method);
+        } else {
+            bw_str(w, mm.field_name);
+            ser_type(w, mm.field_type);
+            bw_byte(w, b2u8(mm.field_mut));
+            bw_byte(w, b2u8(mm.field_private));
+            ser_expr(w, mm.field_default);
+        }
+        mm = mm.next;
+    }
+}
+
+void ser_struct_node(mut *BufWriter w, *StructNode s) {
+    if (s == nullptr) { bw_byte(w, 0); return; }
+    bw_byte(w, 1);
+    bw_str(w, s.name);
+    bw_i32(w, s.line);
+    bw_i32(w, s.column);
+    bw_i32(w, s.length);
+    ser_members(w, s.members_head);
+    mut u32 tpc = 0;
+    mut *TypeNode tp = s.type_param_head;
+    while (tp != nullptr) { tpc = tpc + 1; tp = tp.next; }
+    bw_u32(w, tpc);
+    tp = s.type_param_head;
+    while (tp != nullptr) { ser_type(w, tp); tp = tp.next; }
+}
+
+void ser_enum(mut *BufWriter w, *EnumNode e) {
+    bw_str(w, e.name);
+    bw_i32(w, e.line);
+    bw_i32(w, e.column);
+    bw_i32(w, e.length);
+    bw_u64(w, e.variant_count);
+    mut *StrNode v = e.variants_head;
+    while (v != nullptr) { bw_str(w, v.value); v = v.next; }
+}
+
+void ser_stmt(mut *BufWriter w, *StmtNode s) {
+    bw_byte(w, stmt_tag(s.kind));
+    bw_i32(w, s.line);
+    bw_i32(w, s.column);
+    bw_i32(w, s.length);
+
+    if (s.kind == STMT_EXPR) {
+        ser_expr(w, s.expr);
+    } else if (s.kind == STMT_RETURN) {
+        ser_expr(w, s.expr);
+    } else if (s.kind == STMT_IF) {
+        ser_expr(w, s.cond);
+        ser_block(w, s.then_blk);
+        ser_if_chain(w, s.else_if);
+        ser_block(w, s.else_blk);
+    } else if (s.kind == STMT_WHILE) {
+        ser_expr(w, s.cond);
+        ser_block(w, s.block);
+    } else if (s.kind == STMT_BLOCK) {
+        ser_block(w, s.block);
+    } else if (s.kind == STMT_SWITCH) {
+        ser_expr(w, s.expr);
+        ser_switch_cases(w, s.case_head);
+        ser_block(w, s.default_blk);
+    } else if (s.kind == STMT_VAR) {
+        bw_str(w, s.var_name);
+        ser_type(w, s.var_type);
+        ser_expr(w, s.var_value);
+        bw_byte(w, b2u8(s.var_mut));
+    } else if (s.kind == STMT_STRUCT) {
+        ser_struct_node(w, s.struct_node);
+    } else if (s.kind == STMT_FUNC) {
+        ser_func_inner(w, s.func_node);
+    } else if (s.kind == STMT_NAMESPACE) {
+        bw_str(w, s.block_name);
+        ser_block(w, s.block);
+    } else if (s.kind == STMT_REGION) {
+        ser_block(w, s.block);
+    } else if (s.kind == STMT_ENUM) {
+        ser_enum(w, s.enum_node);
+    } else if (s.kind == STMT_MODULE) {
+        bw_str(w, s.module_name);
+    } else if (s.kind == STMT_LOAD) {
+        bw_str(w, s.module_name);
+    } else if (s.kind == STMT_USING) {
+        bw_str(w, s.using_path);
+    }
+}
+
+void ser_module(mut *BufWriter w, *ModuleBody body) {
+    bw_byte(w, 81);
+    bw_byte(w, 65);
+    bw_byte(w, 83);
+    bw_byte(w, 84);
+    bw_u32(w, 1);
+    bw_u64(w, body.count);
+    mut *StmtNode s = body.statements_head;
+    while (s != nullptr) {
+        ser_stmt(w, s);
+        s = s.next;
+    }
+    bw_flush(w);
+}

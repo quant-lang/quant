@@ -1,0 +1,346 @@
+load "std::string";
+load "std::types";
+load "front::token";
+load "utils::ctype";
+load "utils::escape";
+module "front::lexer";
+
+using std::string;
+using std::types;
+using front::token;
+using utils::ctype;
+using utils::escape;
+
+struct Lexer {
+    /// HIDDEN
+    @hide
+    mut str buffer;
+    mut u64 pos;
+    mut u64 start;
+
+    mut i32 line;
+    mut i32 column;
+
+    mut i32 start_line;
+    mut i32 start_column;
+
+    slice<u8> span(u64 from, u64 to) {
+        return slice_make<u8>(((((buffer as! *u8) as! u64) + from) as! *u8), to - from);
+    }
+    char peek(){
+        if (pos >= str_len(buffer)) return '\0';
+        return str_char_at(buffer, pos);
+    }
+    char advance(){
+        char c = peek();
+        if (c == '\0') return c;
+
+        pos++;
+
+        if (c == '\n') {
+            line++;
+            column = 1;
+        } else {
+            column++;
+        }
+        return c;
+    }
+    bool match(char expected) {
+        if (peek() != expected){
+            return false;
+        }
+
+        advance();
+        return true;
+    }
+    bool is_at_end(){
+        return peek() == '\0';
+    }
+
+    Token make_token(TokenType type){
+        u64 len = pos - start;
+        slice<u8> text = span(start, pos);
+
+        SourceLocation sl = SourceLocation{ "<unknown>", start_line, start_column, len as i32 };
+        return Token{ type, text, option_none<f64>(), option_none<u8>(), 0, sl };
+    }
+    Token make_number(){
+        mut Token tok = make_token(TOKEN_NUMBER);
+
+        mut f64 value = 0.0;
+        mut f64 frac = 0.1;
+        mut u64 inum = 0;
+        mut u64 i = start;
+        u64 end = pos;
+
+        while (i < end && is_digit(str_char_at(buffer, i))) {
+            u8 d = str_char_at(buffer, i);
+            value = value * 10.0 + (d - '0') as f64;
+            inum = inum * 10 + ((d - '0') as u64);
+            i++;
+        }
+
+        if (i < end && str_char_at(buffer, i) == '.') {
+            i++;
+            while (i < end && is_digit(str_char_at(buffer, i))) {
+                u8 d = str_char_at(buffer, i);
+                value = value + ((d - '0') as f64) * frac;
+                frac = frac * 0.1;
+                i++;
+            }
+        }
+
+        tok.number = option_some<f64>(value);
+        tok.inum = inum;
+        return tok;
+    }
+
+    Token number(){
+        while (is_digit(peek())) {
+            advance();
+        }
+
+        if (peek() == '.' && pos + 1 < str_len(buffer) &&
+            is_digit(str_char_at(buffer, pos + 1))) {
+            advance();
+
+            while (is_digit(peek())) {
+                advance();
+            }
+        }
+
+        if (peek() == 'e' || peek() == 'E') {
+            advance();
+
+            if (peek() == '+' || peek() == '-') {
+                advance();
+            }
+
+            while (is_digit(peek())) {
+                advance();
+            }
+        }
+
+        return make_number();
+    }
+    Token identifier(){
+        while (is_alnum(peek()) || peek() == '_') {
+            advance();
+        }
+
+        slice<u8> text = span(start, pos);
+
+        if (slice_eq_str(text, "if")) { return make_token(TOKEN_IF); }
+        if (slice_eq_str(text, "else")) { return make_token(TOKEN_ELSE); }
+        if (slice_eq_str(text, "while")) { return make_token(TOKEN_WHILE); }
+        if (slice_eq_str(text, "for")) { return make_token(TOKEN_FOR); }
+        if (slice_eq_str(text, "switch")) { return make_token(TOKEN_SWITCH); }
+        if (slice_eq_str(text, "case")) { return make_token(TOKEN_CASE); }
+        if (slice_eq_str(text, "default")) { return make_token(TOKEN_DEFAULT); }
+        if (slice_eq_str(text, "return")) { return make_token(TOKEN_RETURN); }
+        if (slice_eq_str(text, "break")) { return make_token(TOKEN_BREAK); }
+        if (slice_eq_str(text, "continue")) { return make_token(TOKEN_CONTINUE); }
+        if (slice_eq_str(text, "func")) { return make_token(TOKEN_FUNC); }
+
+        if (slice_eq_str(text, "mut")) { return make_token(TOKEN_MUT); }
+        if (slice_eq_str(text, "struct")) { return make_token(TOKEN_STRUCT); }
+        if (slice_eq_str(text, "namespace")) { return make_token(TOKEN_NAMESPACE); }
+        if (slice_eq_str(text, "load")) { return make_token(TOKEN_LOAD); }
+        if (slice_eq_str(text, "using")) { return make_token(TOKEN_USING); }
+        if (slice_eq_str(text, "module")) { return make_token(TOKEN_MODULE); }
+        if (slice_eq_str(text, "extern")) { return make_token(TOKEN_EXTERN); }
+
+        if (slice_eq_str(text, "void")) { return make_token(TOKEN_VOID); }
+        if (slice_eq_str(text, "bool")) { return make_token(TOKEN_BOOL); }
+        if (slice_eq_str(text, "i8")) { return make_token(TOKEN_I8); }
+        if (slice_eq_str(text, "i16")) { return make_token(TOKEN_I16); }
+        if (slice_eq_str(text, "i32")) { return make_token(TOKEN_I32); }
+        if (slice_eq_str(text, "i64")) { return make_token(TOKEN_I64); }
+        if (slice_eq_str(text, "u8")) { return make_token(TOKEN_U8); }
+        if (slice_eq_str(text, "u16")) { return make_token(TOKEN_U16); }
+        if (slice_eq_str(text, "u32")) { return make_token(TOKEN_U32); }
+        if (slice_eq_str(text, "u64")) { return make_token(TOKEN_U64); }
+        if (slice_eq_str(text, "f32")) { return make_token(TOKEN_F32); }
+        if (slice_eq_str(text, "f64")) { return make_token(TOKEN_F64); }
+        if (slice_eq_str(text, "str")) { return make_token(TOKEN_STR_TYPE); }
+        if (slice_eq_str(text, "char")) { return make_token(TOKEN_CHAR_TYPE); }
+        if (slice_eq_str(text, "as")) { return make_token(TOKEN_AS); }
+        if (slice_eq_str(text, "sizeof")) { return make_token(TOKEN_SIZEOF); }
+        if (slice_eq_str(text, "region")) { return make_token(TOKEN_REGION); }
+        if (slice_eq_str(text, "enum")) { return make_token(TOKEN_ENUM); }
+        if (slice_eq_str(text, "true")) { return make_token(TOKEN_TRUE); }
+        if (slice_eq_str(text, "false")) { return make_token(TOKEN_FALSE); }
+        if (slice_eq_str(text, "nullptr")) { return make_token(TOKEN_NULLPTR); }
+
+        return make_token(TOKEN_IDENT);
+    }
+    Token string(){
+        while (peek() != '"' && !is_at_end()) {
+            if (peek() == '\\') {
+                advance();
+                if (!is_at_end()) advance();
+                continue;
+            }
+            if (peek() == '\n') {
+                line++;
+                column = 1;
+            }
+            advance();
+        }
+        if (is_at_end()) {
+            return make_token(TOKEN_ILLEGAL);
+        }
+        advance();
+
+        u64 len = pos - start - 2;
+        slice<u8> text = span(start + 1, pos - 1);
+
+        SourceLocation sl = SourceLocation{ "<unknown>", start_line, start_column, (pos - start) as i32 };
+        return Token{ TOKEN_STRING, text, option_none<f64>(), option_none<u8>(), 0, sl };
+    }
+    Token char_literal(){
+        if (is_at_end()) {
+            return make_token(TOKEN_ILLEGAL);
+        }
+
+        mut u8 value = 0;
+
+        char c = advance();
+        if (c == '\'') {
+            return make_token(TOKEN_ILLEGAL);
+        }
+
+        if (c == '\\') {
+            if (is_at_end()) {
+                return make_token(TOKEN_ILLEGAL);
+            }
+            char esc = advance();
+            option<u8> ev = escape_char(esc);
+            if (ev.is_none()) {
+                return make_token(TOKEN_ILLEGAL);
+            }
+            value = ev.unwrap();
+        } else {
+            value = c as u8;
+        }
+
+        if (is_at_end() || peek() != '\'') {
+            return make_token(TOKEN_ILLEGAL);
+        }
+        advance();
+
+        mut Token tok = make_token(TOKEN_CHAR_LITERAL);
+        tok.char_val = option_some<u8>(value);
+        return tok;
+    }
+    @unhide
+    ///
+
+    Token next_token(){
+        while (is_space(peek())) {
+            advance();
+        }
+
+        start = pos;
+        start_line = line;
+        start_column = column;
+
+        char c = advance();
+
+        if (is_digit(c)) {
+            return number();
+        } else if (is_alpha(c) || c == '_') {
+            return identifier();
+        } else if (c == '"') {
+            return string();
+        } else if (c == '\'') {
+            return char_literal();
+        }
+
+        switch (c) {
+            case '(':   return make_token(TOKEN_LPAREN);
+            case ')':   return make_token(TOKEN_RPAREN);
+            case '{':   return make_token(TOKEN_LBRACE);
+            case '}':   return make_token(TOKEN_RBRACE);
+            case '[':   return make_token(TOKEN_LBRACKET);
+            case ']':   return make_token(TOKEN_RBRACKET);
+            case ',':   return make_token(TOKEN_COMMA);
+            case ';':   return make_token(TOKEN_SEMICOLON);
+            case '@':   return make_token(TOKEN_AT);
+            case '#':   return make_token(TOKEN_HASH);
+            case '.':   return make_token(TOKEN_DOT);
+            case '=':
+                if (match('=')) return make_token(TOKEN_EQEQ);
+                else if (match('>')) return make_token(TOKEN_EQA);
+                else return make_token(TOKEN_EQ);
+            case '!':
+                if (match('=')) return make_token(TOKEN_NEQ);
+                else return make_token(TOKEN_NOT);
+            case '&':
+                if (match('&')) return make_token(TOKEN_AMP_AMP);
+                else if (match('=')) return make_token(TOKEN_AMP_EQ);
+                else return make_token(TOKEN_AMP);
+            case '|':
+                if (match('|')) return make_token(TOKEN_PIPE_PIPE);
+                else if (match('=')) return make_token(TOKEN_PIPE_EQ);
+                else return make_token(TOKEN_PIPE);
+            case '<':
+                if (match('=')) return make_token(TOKEN_LTE);
+                else return make_token(TOKEN_LT);
+            case '>':
+                if (match('=')) return make_token(TOKEN_GTE);
+                else return make_token(TOKEN_GT);
+            case '+':
+                if (match('=')) return make_token(TOKEN_PLUS_EQ);
+                else if (match('+')) return make_token(TOKEN_PLUS_PLUS);
+                else return make_token(TOKEN_PLUS);
+            case '-':
+                if (match('=')) return make_token(TOKEN_MINUS_EQ);
+                else if (match('-')) return make_token(TOKEN_MINUS_MINUS);
+                else return make_token(TOKEN_MINUS);
+            case '*':
+                if (match('=')) return make_token(TOKEN_STAR_EQ);
+                else return make_token(TOKEN_STAR);
+            case ':':
+                if (match(':')) return make_token(TOKEN_COLON_COLON);
+                else return make_token(TOKEN_COLON);
+            case '/':
+                if (match('/')) {
+                    while (peek() != '\n' && !is_at_end()) advance();
+                    return next_token();
+                }
+                else if (match('*')) {
+                    while (!is_at_end()) {
+                        if (peek() == '*' && pos + 1 < str_len(buffer) && str_char_at(buffer, pos + 1) == '/') {
+                            advance();
+                            advance();
+                            break;
+                        }
+                        if (peek() == '\n') {
+                            line++;
+                            column = 1;
+                        }
+                        advance();
+                    }
+                    return next_token();
+                }
+                else if (match('=')) return make_token(TOKEN_SLASH_EQ);
+                else return make_token(TOKEN_SLASH);
+            case '\0':  return make_token(TOKEN_EOF);
+            default:    return make_token(TOKEN_ILLEGAL);
+        }
+    }
+
+};
+
+Lexer lexer_init(str source){
+    @init mut Lexer l;
+    l.buffer = source;
+    l.pos = 0;
+    l.start = 0;
+    l.line = 1;
+    l.column = 1;
+    l.start_line = 1;
+    l.start_column = 1;
+    return l;
+}

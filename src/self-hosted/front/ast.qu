@@ -1,0 +1,481 @@
+/* front::ast
+   The self-hosted analog of C++ ast.h
+   Because quant is C-like and has no std::variant, the ast is simpler
+*/
+
+load "std::arena";
+using std::arena;
+
+load "std::types";
+using std::types;
+
+module "front::ast";
+
+// Types
+
+enum TypeKind {
+    TYPE_VOID,
+    TYPE_BOOL,
+
+    TYPE_I8,
+    TYPE_I16,
+    TYPE_I32,
+    TYPE_I64,
+
+    TYPE_U8,
+    TYPE_U16,
+    TYPE_U32,
+    TYPE_U64,
+
+    TYPE_F32,
+    TYPE_F64,
+
+    TYPE_STRING,
+
+    TYPE_STRUCT,
+    TYPE_POINTER,
+    TYPE_REFERENCE,
+
+    TYPE_NULLPTR,
+
+    TYPE_GENERIC
+};
+
+struct TypeNode {
+    mut TypeKind kind;
+    mut slice<u8> struct_name;
+
+    mut *TypeNode pointed;
+
+    mut *TypeNode arg_head;
+    mut *TypeNode arg_tail;
+
+    mut *TypeNode next;
+};
+
+enum BinaryOp {
+    OP_ADD,
+    OP_SUB,
+    OP_MUL,
+    OP_DIV,
+    OP_EQ,
+    OP_NEQ,
+    OP_LT,
+    OP_LTE,
+    OP_GT,
+    OP_GTE,
+    OP_BIT_AND,
+    OP_BIT_OR,
+    OP_LOGIC_AND,
+    OP_LOGIC_OR
+};
+
+enum UnaryOp {
+    OP_NEG,
+    OP_NOT,
+    OP_ADDR_OF
+};
+
+enum CastKind {
+    CAST_VALUE,
+    CAST_BIT
+};
+
+enum ExprKind {
+    EXPR_INT,
+    EXPR_BOOL,
+    EXPR_NULLPTR,
+    EXPR_FLOAT,
+    EXPR_STRING,
+    EXPR_CHAR,
+    EXPR_VAR,
+    EXPR_BINARY,
+    EXPR_UNARY,
+    EXPR_ASSIGN,
+    EXPR_CALL,
+    EXPR_FIELD,
+    EXPR_NAMESPACE,
+    EXPR_CAST,
+    EXPR_TYPE,
+    EXPR_INDEX,
+    EXPR_STRUCT_INIT,
+    EXPR_SIZEOF
+};
+
+struct ExprNode {
+    mut ExprKind kind;
+    mut i32 line;
+    mut i32 column;
+    mut i32 length;
+    mut bool is_comptime;
+
+    mut i64 int_value;
+    mut f64 float_value;
+    mut str string_value;
+    mut u8 char_value;
+    mut u64 bool_value;
+
+    mut slice<u8> name;
+
+    mut *ExprNode lhs;
+    mut *ExprNode rhs;
+    mut *ExprNode operand;
+    mut *ExprNode target;
+    mut *ExprNode value;
+    mut *ExprNode base;
+    mut *ExprNode index;
+    mut *ExprNode callee;
+    mut *TypeNode cast_type;
+    mut CastKind cast_kind;
+
+    mut BinaryOp bin_op;
+    mut UnaryOp un_op;
+
+    mut *ExprNode arg_head;
+    mut *ExprNode arg_tail;
+    mut *TypeNode type_arg_head;
+    mut *TypeNode type_arg_tail;
+    mut *ExprNode init_type_ref;
+
+    mut *ExprNode next;
+};
+
+enum StmtKind {
+    STMT_EXPR,
+    STMT_RETURN,
+    STMT_BREAK,
+    STMT_CONTINUE,
+    STMT_IF,
+    STMT_WHILE,
+    STMT_BLOCK,
+    STMT_SWITCH,
+    STMT_VAR,
+    STMT_STRUCT,
+    STMT_FUNC,
+    STMT_NAMESPACE,
+    STMT_REGION,
+    STMT_ENUM,
+    STMT_MODULE,
+    STMT_LOAD,
+    STMT_USING
+};
+
+struct StrNode {
+    mut slice<u8> value;
+    mut *StrNode next;
+};
+
+struct AttrNode {
+    mut slice<u8> name;
+    mut *ExprNode arg_head;
+    mut *ExprNode arg_tail;
+    mut *AttrNode next;
+};
+
+struct ArgNode {
+    mut slice<u8> name;
+    mut *TypeNode type;
+    mut bool is_mut;
+    mut *ArgNode next;
+};
+
+struct FuncNode {
+    mut slice<u8> name;
+    mut i32 line;
+    mut i32 column;
+    mut i32 length;
+
+    mut *TypeNode return_type;
+    mut *ArgNode args_head;
+    mut *ArgNode args_tail;
+
+    mut bool is_extern;
+    mut bool has_body;
+    mut bool is_entry;
+    mut bool is_forward;
+    mut bool is_private;
+
+    mut slice<u8> struct_name;
+
+    mut *void body;
+    mut *TypeNode type_param_head;
+    mut *TypeNode type_param_tail;
+    mut *AttrNode attrs;
+
+    mut *FuncNode next;
+};
+
+struct StructMember {
+    mut bool is_method;
+
+    mut slice<u8> field_name;
+    mut *TypeNode field_type;
+    mut bool field_mut;
+    mut bool field_private;
+    mut *ExprNode field_default;
+    mut *AttrNode field_attrs;
+
+    mut *FuncNode method;
+
+    mut *StructMember next;
+};
+
+struct StructNode {
+    mut slice<u8> name;
+    mut i32 line;
+    mut i32 column;
+    mut i32 length;
+
+    mut *StructMember members_head;
+    mut *StructMember members_tail;
+
+    mut *AttrNode attrs;
+    mut *TypeNode type_param_head;
+    mut *TypeNode type_param_tail;
+};
+
+struct EnumNode {
+    mut slice<u8> name;
+    mut i32 line;
+    mut i32 column;
+    mut i32 length;
+
+    mut *StrNode variants_head;
+    mut *StrNode variants_tail;
+    mut u64 variant_count;
+
+    mut *AttrNode attrs;
+};
+
+struct SwitchCase {
+    mut *ExprNode value_head;
+    mut *ExprNode value_tail;
+    mut *void body;
+    mut *SwitchCase next;
+};
+
+struct StmtNode {
+    mut StmtKind kind;
+    mut i32 line;
+    mut i32 column;
+    mut i32 length;
+
+    mut *ExprNode expr;
+
+    mut *ExprNode cond;
+    mut *void then_blk;
+    mut *StmtNode else_if;
+    mut *void else_blk;
+    mut *StmtNode else_next;
+
+    mut *ExprNode for_step;
+
+    mut *void block;
+
+    mut *SwitchCase case_head;
+    mut *SwitchCase case_tail;
+    mut *void default_blk;
+
+    mut slice<u8> var_name;
+    mut *TypeNode var_type;
+    mut *ExprNode var_value;
+    mut bool var_mut;
+
+    mut *StructNode struct_node;
+
+    mut *FuncNode func_node;
+
+    mut slice<u8> block_name;
+
+    mut *EnumNode enum_node;
+
+    mut slice<u8> module_name;
+
+    mut slice<u8> using_path;
+
+    mut *AttrNode attrs;
+
+    mut *StmtNode next;
+};
+
+struct BlockNode {
+    mut *StmtNode head;
+    mut *StmtNode tail;
+    mut u64 count;
+};
+
+struct AttrList {
+    mut *AttrNode head;
+    mut *AttrNode tail;
+};
+
+struct ModuleBody {
+    mut *StmtNode statements_head;
+    mut *StmtNode statements_tail;
+    mut u64 count;
+};
+
+// as_vp - store a BlockNode pointer in a *void node field
+*void as_vp(*BlockNode b) {
+    return b as! *void;
+}
+
+/// Arena factories ///
+
+*ExprNode alloc_expr(Region arena) {
+    return arena.bump(#sizeof(ExprNode)) as! *ExprNode;
+}
+
+*StmtNode alloc_stmt(Region arena) {
+    return arena.bump(#sizeof(StmtNode)) as! *StmtNode;
+}
+
+*TypeNode alloc_type(Region arena) {
+    return arena.bump(#sizeof(TypeNode)) as! *TypeNode;
+}
+
+*BlockNode alloc_block(Region arena) {
+    return arena.bump(#sizeof(BlockNode)) as! *BlockNode;
+}
+
+*AttrNode alloc_attr(Region arena) {
+    return arena.bump(#sizeof(AttrNode)) as! *AttrNode;
+}
+
+*ArgNode alloc_arg(Region arena) {
+    return arena.bump(#sizeof(ArgNode)) as! *ArgNode;
+}
+
+*FuncNode alloc_func(Region arena) {
+    return arena.bump(#sizeof(FuncNode)) as! *FuncNode;
+}
+
+*StructMember alloc_member(Region arena) {
+    return arena.bump(#sizeof(StructMember)) as! *StructMember;
+}
+
+*StructNode alloc_struct(Region arena) {
+    return arena.bump(#sizeof(StructNode)) as! *StructNode;
+}
+
+*EnumNode alloc_enum(Region arena) {
+    return arena.bump(#sizeof(EnumNode)) as! *EnumNode;
+}
+
+*StrNode alloc_str(Region arena) {
+    return arena.bump(#sizeof(StrNode)) as! *StrNode;
+}
+
+*SwitchCase alloc_case(Region arena) {
+    return arena.bump(#sizeof(SwitchCase)) as! *SwitchCase;
+}
+
+*AttrList alloc_attr_list(Region arena) {
+    return arena.bump(#sizeof(AttrList)) as! *AttrList;
+}
+
+*ModuleBody alloc_mod_body(Region arena) {
+    return arena.bump(#sizeof(ModuleBody)) as! *ModuleBody;
+}
+
+// List helpers
+
+void block_push(mut *BlockNode block, *StmtNode stmt) {
+    if (stmt == nullptr) return;
+    if (block.count == 0) {
+        block.head = stmt;
+    } else {
+        block.tail.next = stmt;
+    }
+    block.tail = stmt;
+    block.count = block.count + 1;
+}
+
+void func_args_append(mut *FuncNode fn, *ArgNode arg) {
+    if (arg == nullptr) return;
+    if (fn.args_tail == nullptr) {
+        fn.args_head = arg;
+    } else {
+        fn.args_tail.next = arg;
+    }
+    fn.args_tail = arg;
+}
+
+void struct_type_param_append(mut *StructNode s, *TypeNode param) {
+    if (param == nullptr) return;
+    if (s.type_param_tail == nullptr) {
+        s.type_param_head = param;
+    } else {
+        s.type_param_tail.next = param;
+    }
+    s.type_param_tail = param;
+}
+
+void member_push(mut *StructNode s, *StructMember member) {
+    if (member == nullptr) return;
+    if (s.members_tail == nullptr) {
+        s.members_head = member;
+    } else {
+        s.members_tail.next = member;
+    }
+    s.members_tail = member;
+}
+
+void enum_variant_push(mut *EnumNode e, *StrNode variant) {
+    if (variant == nullptr) return;
+    if (e.variant_count == 0) {
+        e.variants_head = variant;
+    } else {
+        e.variants_tail.next = variant;
+    }
+    e.variants_tail = variant;
+    e.variant_count = e.variant_count + 1;
+}
+
+void switch_case_push(mut *StmtNode swit, *SwitchCase c) {
+    if (c == nullptr) return;
+    if (swit.case_tail == nullptr) {
+        swit.case_head = c;
+    } else {
+        swit.case_tail.next = c;
+    }
+    swit.case_tail = c;
+}
+
+void case_values_append(mut *SwitchCase c, *ExprNode value) {
+    if (value == nullptr) return;
+    if (c.value_tail == nullptr) {
+        c.value_head = value;
+    } else {
+        c.value_tail.next = value;
+    }
+    c.value_tail = value;
+}
+
+void attr_list_push(mut *AttrList list, *AttrNode attr) {
+    if (attr == nullptr) return;
+    if (list.tail == nullptr) {
+        list.head = attr;
+    } else {
+        list.tail.next = attr;
+    }
+    list.tail = attr;
+}
+
+*StrNode param_push_front(*StrNode head, slice<u8> name, Region arena) {
+    mut *StrNode n = alloc_str(arena);
+    n.value = name;
+    n.next = head;
+    return n;
+}
+
+void module_push(mut *ModuleBody body, *StmtNode stmt) {
+    if (stmt == nullptr) return;
+    if (body.statements_tail == nullptr) {
+        body.statements_head = stmt;
+    } else {
+        body.statements_tail.next = stmt;
+    }
+    body.statements_tail = stmt;
+    body.count = body.count + 1;
+}

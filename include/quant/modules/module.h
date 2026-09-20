@@ -42,6 +42,12 @@ public:
     Module* load_entry(const fs::path& path);
     Module* load_module(const fs::path& path);
 
+    // Register a module with a pre-built AST (e.g. deserialized from QAST).
+    // The module_name must already be set. populates imports from LoadStmts.
+    Module* register_ast(const std::string& module_name,
+                         const fs::path& disk_path,
+                         std::vector<ast::Stmt*> ast);
+
     // Load a std:: module from the stdlib embedded into the binary.
     // Returns nullptr if the module is not found in the embedded table.
     Module* load_embedded(const std::string& imp);
@@ -51,6 +57,7 @@ public:
     const std::vector<Module*>& ordered_modules() const;
 
 private:
+    std::filesystem::path entry_dir;
     Module* build_module(const std::string& file_key,
                          const std::string& display_path,
                          const std::string& source,

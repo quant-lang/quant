@@ -3,9 +3,11 @@
 #include <chrono>
 #include <fstream>
 #include <cstdlib>
+#include <cstdio>
 
 #include "quant/frontend/lexer.h"
 #include "quant/frontend/parser.h"
+#include "quant/frontend/ast_deserialize.h"
 #include "quant/semantic/semantic.h"
 #include "quant/support/compiler_context.h"
 
@@ -26,11 +28,6 @@ int main(int argc, char **argv)
         using namespace std::chrono;
 
         auto opts = utils::options::parse_args(argc, argv);
-
-        if (opts.input_file.empty()) {
-            utils::logger::error("No input file provided");
-            return 1;
-        }
 
         // Target selection is fully resolved by parse_args against the
         // backends enabled at CMake configure time (QUANT_BACKENDS).
@@ -71,12 +68,116 @@ int main(int argc, char **argv)
         quant::modules::ModuleManager mm(ctx);
         quant::linker::Linker linker(mm, ctx);
 
-        if (!std::filesystem::path(opts.input_file).has_extension())
-        {
-            opts.input_file += ".qu";
+        quant::modules::Module* entry = nullptr;
+
+        if (!opts.from_ast.empty()) {
+            // Deserialize QAST binary and register as entry module
+            quant::ast::AstDeserializer deser(ctx);
+            auto ast = deser.deserialize_file(opts.from_ast);
+
+            // Extract module name from ModuleDecl
+            std::string module_name;
+            for (auto* stmt : ast) {
+                if (auto* md = std::get_if<quant::ast::ModuleDecl>(&stmt->kind)) {
+                    module_name = md->name;
+                    break;
+                }
+            }
+            if (module_name.empty()) {
+                module_name = std::filesystem::path(opts.from_ast).stem().string();
+            }
+
+            // Register the deserialized module
+            entry = mm.register_ast(module_name, {}, std::move(ast));
+        } else {
+            if (opts.input_file.empty()) {
+                utils::logger::error("No input file provided");
+                return 1;
+            }
+
+            if (!std::filesystem::path(opts.input_file).has_extension()) {
+                opts.input_file += ".qu";
+            }
+
+            // Try self-hosted frontend: look for ./out next to the source
+            // or next to the compiler binary, then pipe source through it.
+            auto src_path = std::filesystem::absolute(opts.input_file);
+            std::filesystem::path fe_bin;
+#ifdef QUANT_SELF_HOSTED_ENABLED
+#ifdef QUANT_SELF_HOSTED_BIN
+            // Compile-time path from CMake
+            if (std::filesystem::exists(QUANT_SELF_HOSTED_BIN)) {
+                fe_bin = QUANT_SELF_HOSTED_BIN;
+            }
+#endif
+            // Runtime search: next to source, then in source tree
+            if (fe_bin.empty()) {
+                auto c = src_path.parent_path() / "out";
+                if (std::filesystem::exists(c)) fe_bin = c;
+            }
+            if (fe_bin.empty()) {
+                auto c = ctx.root_path / "src" / "self-hosted" / "out";
+                if (std::filesystem::exists(c)) fe_bin = c;
+            }
+            if (fe_bin.empty()) {
+                auto c = ctx.root_path.parent_path() / "src" / "self-hosted" / "out";
+                if (std::filesystem::exists(c)) fe_bin = c;
+            }
+#endif
+
+            if (!fe_bin.empty()) {
+                // Pipe source through self-hosted frontend
+                std::string cmd = fe_bin.string() + " < " + src_path.string();
+                FILE* pipe = popen(cmd.c_str(), "r");
+                if (!pipe) {
+                    throw std::runtime_error("failed to spawn self-hosted frontend: " + fe_bin.string());
+                }
+
+                // Wrap in a streamsbuf so we can use std::istream
+                struct PipeBuf : std::streambuf {
+                    FILE* f;
+                    PipeBuf(FILE* f) : f(f) {}
+                    int underflow() override {
+                        char buf[4096];
+                        size_t n = std::fread(buf, 1, sizeof(buf), f);
+                        if (n == 0) return traits_type::eof();
+                        setg(buf, buf, buf + n);
+                        return traits_type::to_int_type(*gptr());
+                    }
+                } pbuf(pipe);
+                std::istream pipe_stream(&pbuf);
+
+                quant::ast::AstDeserializer deser(ctx);
+                deser.source_file = src_path.string();
+                auto ast = deser.deserialize(pipe_stream);
+
+                int rc = pclose(pipe);
+                if (rc != 0) {
+                    throw std::runtime_error("self-hosted frontend failed (exit " + std::to_string(rc) + ")");
+                }
+
+                // Extract module name from ModuleDecl
+                std::string module_name;
+                for (auto* stmt : ast) {
+                    if (auto* md = std::get_if<quant::ast::ModuleDecl>(&stmt->kind)) {
+                        module_name = md->name;
+                        break;
+                    }
+                }
+                if (module_name.empty()) {
+                    module_name = src_path.stem().string();
+                }
+
+                entry = mm.register_ast(module_name, src_path, std::move(ast));
+            } else {
+                entry = mm.load_entry(opts.input_file);
+            }
         }
 
-        auto* entry = mm.load_entry(opts.input_file);
+        if (!entry) {
+            utils::logger::error("Failed to load entry module");
+            return 1;
+        }
 
         // Always compile the pure-Quant format runtime (used by `as str` casts).
         // It ships embedded in the binary; fall back to the source tree in dev builds.

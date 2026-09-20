@@ -1,0 +1,93 @@
+// front::ops
+//
+// Operator token -> AST operator mapping and precedence table
+// (Quant analog of the lookup helpers in C++ src/frontend/parser.cpp).
+
+load "std::types";
+using std::types;
+
+load "front::token";
+using front::token;
+
+load "front::ast";
+using front::ast;
+
+module "front::ops";
+
+// primitive_type_kind - TypeKind for a builtin type keyword.
+TypeKind primitive_type_kind(TokenType t) {
+    switch (t) {
+        case TOKEN_VOID:     return TYPE_VOID;
+        case TOKEN_BOOL:     return TYPE_BOOL;
+        case TOKEN_I8:       return TYPE_I8;
+        case TOKEN_I16:      return TYPE_I16;
+        case TOKEN_I32:      return TYPE_I32;
+        case TOKEN_I64:      return TYPE_I64;
+        case TOKEN_U8:       return TYPE_U8;
+        case TOKEN_U16:      return TYPE_U16;
+        case TOKEN_U32:      return TYPE_U32;
+        case TOKEN_U64:      return TYPE_U64;
+        case TOKEN_F32:      return TYPE_F32;
+        case TOKEN_F64:      return TYPE_F64;
+        case TOKEN_STR_TYPE: return TYPE_STRING;
+        case TOKEN_CHAR_TYPE: return TYPE_U8;
+        default:             return TYPE_VOID;
+    }
+}
+
+BinaryOp get_op_from_token(TokenType type) {
+    switch (type) {
+        case TOKEN_PLUS:     return OP_ADD;
+        case TOKEN_MINUS:    return OP_SUB;
+        case TOKEN_STAR:     return OP_MUL;
+        case TOKEN_SLASH:    return OP_DIV;
+        case TOKEN_EQEQ:     return OP_EQ;
+        case TOKEN_NEQ:      return OP_NEQ;
+        case TOKEN_LT:       return OP_LT;
+        case TOKEN_LTE:      return OP_LTE;
+        case TOKEN_GT:       return OP_GT;
+        case TOKEN_GTE:      return OP_GTE;
+        case TOKEN_AMP:      return OP_BIT_AND;
+        case TOKEN_PIPE:     return OP_BIT_OR;
+        case TOKEN_AMP_AMP:  return OP_LOGIC_AND;
+        case TOKEN_PIPE_PIPE: return OP_LOGIC_OR;
+        default:             return OP_ADD;
+    }
+}
+
+i32 get_precedence(TokenType t) {
+    switch (t) {
+        case TOKEN_EQ:
+        case TOKEN_PLUS_EQ:
+        case TOKEN_MINUS_EQ:
+        case TOKEN_STAR_EQ:
+        case TOKEN_SLASH_EQ:
+        case TOKEN_AMP_EQ:
+        case TOKEN_PIPE_EQ:
+            return 1;
+        case TOKEN_PIPE_PIPE:
+            return 2;
+        case TOKEN_AMP_AMP:
+            return 3;
+        case TOKEN_PIPE:
+            return 4;
+        case TOKEN_AMP:
+            return 5;
+        case TOKEN_EQEQ:
+        case TOKEN_NEQ:
+            return 6;
+        case TOKEN_LT:
+        case TOKEN_LTE:
+        case TOKEN_GT:
+        case TOKEN_GTE:
+            return 7;
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+            return 8;
+        case TOKEN_STAR:
+        case TOKEN_SLASH:
+            return 9;
+        default:
+            return -1;
+    }
+}

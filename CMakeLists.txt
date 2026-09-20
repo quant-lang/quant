@@ -28,6 +28,17 @@ option(QUANT_ENABLE_ASAN "Enable AddressSanitizer/UBSan in Debug builds" OFF)
 option(QUANT_ENABLE_TESTS "Build tests" OFF)
 option(QUANT_ENABLE_BENCH "Build the IR optimizer benchmark (quant_bench)" ON)
 
+# Self-hosted frontend: 'qu' (C++) or 'quant' (self-hosted Quant)
+# When set to 'quant', the C++ compiler spawns the self-hosted frontend
+# binary for parsing and deserializes its AST output
+set(QUANT_FRONTEND "qu" CACHE STRING "Frontend to use: qu (C++, default) or quant (self-hosted)")
+set_property(CACHE QUANT_FRONTEND PROPERTY STRINGS "qu" "quant")
+
+# Self-hosted frontend integration (auto-detected at runtime).
+# When ON, the C++ compiler looks for src/self-hosted/out and spawns it
+# to parse .qu files, then deserializes the QAST output
+option(QUANT_SELF_HOSTED "Enable self-hosted Quant frontend (requires pre-built out binary)" ON)
+
 # Backends compiled into the compiler binary. CMake answers
 # "what targets can this compiler build for?"; --target then picks one of the
 # enabled entries at compile time (see src/backend/targets.cpp).
@@ -176,6 +187,7 @@ endif()
 
 add_library(libquant
     src/frontend/ast.cpp
+    src/frontend/ast_deserialize.cpp
     src/frontend/lexer.cpp
     src/frontend/parser.cpp
     src/semantic/semantic.cpp
@@ -256,6 +268,35 @@ add_executable(qu
 target_link_libraries(qu
     PRIVATE libquant quant_compiler_flags
 )
+
+# Self-hosted frontend
+if(QUANT_SELF_HOSTED)
+  set(QUANT_SELF_HOSTED_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/self-hosted")
+
+  set(QUANT_SELF_HOSTED_SOURCE
+        "${QUANT_SELF_HOSTED_DIR}/main.qu")
+
+  set(QUANT_SELF_HOSTED_BIN
+        "${QUANT_SELF_HOSTED_DIR}/out")
+
+  add_custom_command(
+        TARGET qu POST_BUILD
+        COMMAND "$<TARGET_FILE:qu>"
+            "${QUANT_SELF_HOSTED_SOURCE}"
+            -o "${QUANT_SELF_HOSTED_BIN}"
+            -O3
+            --time
+        BYPRODUCTS "${QUANT_SELF_HOSTED_BIN}"
+        COMMENT "Building self-hosted Quant frontend"
+        VERBATIM
+  )
+
+  target_compile_definitions(qu PRIVATE
+        QUANT_SELF_HOSTED_ENABLED
+        QUANT_SELF_HOSTED_BIN="${QUANT_SELF_HOSTED_BIN}"
+    )
+endif()
 
 # IR optimizer benchmark (benchmark.cpp): times optimize() per level
 if(QUANT_ENABLE_BENCH)

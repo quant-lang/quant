@@ -1,0 +1,68 @@
+load "std::io";
+using std::io;
+
+load "std::arena";
+using std::arena;
+
+load "front::lexer";
+using front::lexer;
+
+load "front::parser";
+using front::parser;
+
+load "front::token";
+using front::token;
+
+load "front::ast";
+using front::ast;
+
+load "front::ast_serialize";
+using front::ast_serialize;
+
+@entry i32 main() {
+    Region r = _create(#(1048576 as u64));
+
+    // Allocate the output buffer BEFORE parsing
+    // Arena bump returns zeroed memory, so the buffer is pre-filled with NULs
+    mut *u8 out_buf = r.bump(#(16384 as u64)) as! *u8;
+
+    // Read all of stdin
+    mut u64 total = 0;
+    mut u64 cap = 4096;
+    mut *u8 buf = r.bump(cap) as! *u8;
+    mut i64 n = 0;
+
+    while (true) {
+        n = sys_read(0, buf as! str, (cap - total) as i64);
+        if (n <= 0) { break; }
+        total += (n as u64);
+        if (total >= cap) {
+            mut u64 new_cap = cap * 2;
+            mut *u8 new_buf = r.bump(new_cap) as! *u8;
+            for(mut u64 = 0; i < total; i++)
+                new_buf[i] = buf[i];
+                i++;
+            }
+            buf = new_buf;
+            cap = new_cap;
+        }
+    }
+
+    if (total == 0) { return 1; }
+
+    // buf is already null-terminated from arena bump (zeroed)
+    str src = buf as! str;
+
+    Lexer l = lexer_init(src);
+    Parser p = parser_init(l, r);
+    *ModuleBody body = parse(&p);
+    if (body == nullptr) { return 1; }
+
+    mut BufWriter w;
+    w.buf = out_buf;
+    w.pos = 0;
+    w.cap = 16384;
+
+    ser_module(&w, body);
+    return 0;
+}

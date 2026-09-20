@@ -39,6 +39,10 @@ namespace utils::options {
         std::string target_name;   // canonical, e.g. "aarch64-zeropoint"
         TargetArch target_arch = TargetArch::X86_64;
         TargetOS target_os = TargetOS::Linux;
+
+        // When set, the compiler reads a QAST binary file instead of parsing
+        // the input source with the C++ frontend.
+        std::string from_ast;
     };
 
     enum class Flag {

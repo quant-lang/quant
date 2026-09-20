@@ -1,0 +1,17 @@
+load "std::types";
+using std::types;
+
+module "utils::escape";
+
+option<u8> escape_char(u8 esc) {
+    switch (esc) {
+        case 'n':  return option_some<u8>('\n');
+        case 't':  return option_some<u8>('\t');
+        case 'r':  return option_some<u8>('\r');
+        case '\\': return option_some<u8>('\\');
+        case '"':  return option_some<u8>('"');
+        case '\'': return option_some<u8>('\'');
+        case '0':  return option_some<u8>('\0');
+        default:   return option_none<u8>();
+    }
+}
