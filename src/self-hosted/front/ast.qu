@@ -381,18 +381,20 @@ struct ModuleBody {
 // List helpers
 
 void block_push(mut *BlockNode block, *StmtNode stmt) {
-    if (stmt == nullptr) return;
+    if (stmt == nullptr)
+        return;
     if (block.count == 0) {
         block.head = stmt;
     } else {
         block.tail.next = stmt;
     }
     block.tail = stmt;
-    block.count = block.count + 1;
+    block.count++;
 }
 
 void func_args_append(mut *FuncNode fn, *ArgNode arg) {
-    if (arg == nullptr) return;
+    if (arg == nullptr)
+        return;
     if (fn.args_tail == nullptr) {
         fn.args_head = arg;
     } else {
@@ -402,7 +404,8 @@ void func_args_append(mut *FuncNode fn, *ArgNode arg) {
 }
 
 void struct_type_param_append(mut *StructNode s, *TypeNode param) {
-    if (param == nullptr) return;
+    if (param == nullptr)
+        return;
     if (s.type_param_tail == nullptr) {
         s.type_param_head = param;
     } else {
@@ -412,7 +415,8 @@ void struct_type_param_append(mut *StructNode s, *TypeNode param) {
 }
 
 void member_push(mut *StructNode s, *StructMember member) {
-    if (member == nullptr) return;
+    if (member == nullptr)
+        return;
     if (s.members_tail == nullptr) {
         s.members_head = member;
     } else {
@@ -422,18 +426,20 @@ void member_push(mut *StructNode s, *StructMember member) {
 }
 
 void enum_variant_push(mut *EnumNode e, *StrNode variant) {
-    if (variant == nullptr) return;
+    if (variant == nullptr)
+        return;
     if (e.variant_count == 0) {
         e.variants_head = variant;
     } else {
         e.variants_tail.next = variant;
     }
     e.variants_tail = variant;
-    e.variant_count = e.variant_count + 1;
+    e.variant_count++;
 }
 
 void switch_case_push(mut *StmtNode swit, *SwitchCase c) {
-    if (c == nullptr) return;
+    if (c == nullptr)
+        return;
     if (swit.case_tail == nullptr) {
         swit.case_head = c;
     } else {
@@ -443,7 +449,8 @@ void switch_case_push(mut *StmtNode swit, *SwitchCase c) {
 }
 
 void case_values_append(mut *SwitchCase c, *ExprNode value) {
-    if (value == nullptr) return;
+    if (value == nullptr)
+        return;
     if (c.value_tail == nullptr) {
         c.value_head = value;
     } else {
@@ -453,7 +460,8 @@ void case_values_append(mut *SwitchCase c, *ExprNode value) {
 }
 
 void attr_list_push(mut *AttrList list, *AttrNode attr) {
-    if (attr == nullptr) return;
+    if (attr == nullptr)
+        return;
     if (list.tail == nullptr) {
         list.head = attr;
     } else {
@@ -470,12 +478,13 @@ void attr_list_push(mut *AttrList list, *AttrNode attr) {
 }
 
 void module_push(mut *ModuleBody body, *StmtNode stmt) {
-    if (stmt == nullptr) return;
+    if (stmt == nullptr)
+        return;
     if (body.statements_tail == nullptr) {
         body.statements_head = stmt;
     } else {
         body.statements_tail.next = stmt;
     }
     body.statements_tail = stmt;
-    body.count = body.count + 1;
+    body.count++;
 }
