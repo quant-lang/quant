@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cmath>
 #include <algorithm>
+#include <set>
 
 #include "utils/logger.h"
 
@@ -2943,6 +2944,36 @@ const ast::Type* SemanticAnalyzer::analyze_cast(const ast::CastExpr& n){
     return target;
 }
 
+// TypeContext::type_size() is const and cannot instantiate anything, so a
+// struct field whose type is an uninstantiated generic (slice<u8>, Vec<Token>)
+// counts as zero bytes and silently yields a too-small sizeof. Materialize every
+// generic reachable from `t` first, so field sizes resolve consistently no
+// matter which module happens to be compiled first. Pointer targets are not
+// walked: they never contribute to a size and their field graphs are cyclic.
+void materialize_generics(const ast::Type* t, types::TypeContext& types,
+                          std::set<std::string>& seen) {
+    if (!t) return;
+    if (t->kind == TypeKind::Struct) {
+        if (!seen.insert(t->struct_name).second) return;
+        if (!t->type_args.empty()) {
+            types.try_instantiate(t->struct_name, t->type_args);
+        }
+        for (const ast::Type* arg : t->type_args) {
+            materialize_generics(arg, types, seen);
+        }
+        if (const auto* fields = types.get_struct_fields(t->struct_name)) {
+            for (const auto& field : *fields) {
+                materialize_generics(field.second, types, seen);
+            }
+        }
+    }
+}
+
+void materialize_generics(const ast::Type* t, types::TypeContext& types) {
+    std::set<std::string> seen;
+    materialize_generics(t, types, seen);
+}
+
 const ast::Type* SemanticAnalyzer::analyze_sizeof(const ast::SizeofExpr& n) {
     const ast::Type* type = n.type;
     if (!type) {
@@ -2952,11 +2983,10 @@ const ast::Type* SemanticAnalyzer::analyze_sizeof(const ast::SizeofExpr& n) {
     if (current_type_subst && !current_type_subst->empty()) {
         type = ctx.types.substitute_type(type, *current_type_subst);
     }
-    // Materialize a generic struct instantiation so its size can be computed
-    // (e.g. sizeof(Vec<Token>) inside a generic function body).
-    if (type->kind == TypeKind::Struct && !type->type_args.empty()) {
-        ctx.types.try_instantiate(type->struct_name, type->type_args);
-    }
+    // Materialize generic struct instantiations reachable from this type so
+    // their sizes can be computed (e.g. sizeof(Vec<Token>) inside a generic
+    // function body, or a struct whose field is slice<u8>).
+    materialize_generics(type, ctx.types);
     int sz = ctx.types.type_size(type);
     if (sz <= 0) {
         ctx.errors.add("sizeof: unsupported type or zero size");

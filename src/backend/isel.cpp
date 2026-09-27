@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "quant/backend/isel.h"
@@ -750,6 +752,13 @@ void ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRIns
 }
 
 void ISel::emit_prologue(const IRFunction& fn) {
+    if (std::getenv("QU_DBG_STACK")) {
+        std::fprintf(stderr, "[stack] %-40s locals=%u temps=%u extra=%u frame=%zu\n",
+                     fn.name.c_str(), fn.local_count, fn.temp_count, fn.extra_stack,
+                     align16((static_cast<std::size_t>(fn.local_count) +
+                              static_cast<std::size_t>(fn.temp_count)) * 8u +
+                             static_cast<std::size_t>(fn.extra_stack)));
+    }
     const std::size_t stack_size = align16(
         (static_cast<std::size_t>(fn.local_count) +
          static_cast<std::size_t>(fn.temp_count)) * 8u +

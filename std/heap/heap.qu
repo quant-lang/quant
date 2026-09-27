@@ -32,9 +32,10 @@ u64 clear_alloc_bit(u64 size_flags) {
     return size_flags & ((-2 as i64) as u64);
 }
 
-// align16 - round `size` up to a 16-byte boundary, minimum 32 bytes.
-u64 align16(u64 size) {
-    mut u64 a = size + 31;
+// block_size - round a payload `size` up to a whole block size.
+// The result covers the 16-byte block header plus `size` payload bytes.
+u64 block_size(u64 size) {
+    mut u64 a = size + 16 + 15;
     a = a & ((-16 as i64) as u64);
     if (a < 32) { return 32; }
     return a;
@@ -111,7 +112,7 @@ bool refill() {
 
 // heap_malloc - allocate `size` bytes. Returns a 16-byte aligned pointer, or NULL.
 *void heap_malloc(u64 size) {
-    u64 need = align16(size);
+    u64 need = block_size(size);
     for (;;) {
         *void p = alloc_from_list(need);
         if (p != (0 as! *void)) { return p; }
@@ -156,7 +157,7 @@ void heap_free(*void ptr) {
     u64 old = ptr as! u64;
     u64 blk = old - 16;
     mut u64 old_size = clear_alloc_bit((blk as! *u64)[0]);
-    u64 need = align16(new_size);
+    u64 need = block_size(new_size);
 
     // The new size fits in the old block - done (maybe shrink).
     if (need <= old_size) {
@@ -170,25 +171,23 @@ void heap_free(*void ptr) {
         return ptr;
     }
 
-    // Try to extend into the next physical block if it is free.
+    // Try to extend into the next physical block if it is free and big enough.
     u64 next = blk + old_size;
     u64 next_flags = (next as! *u64)[0];
     if ((next_flags & 1) == 0) {
         u64 next_size = clear_alloc_bit(next_flags);
-        if ((old_size + next_size) >= need) {
-            if (unlink_free(next) != 0) {
-                // Merge and mark as used, then shrink if larger than needed.
-                (blk as! *u64)[0] = (old_size + next_size) | 1;
-                u64 rest = (old_size + next_size) - need;
-                if (rest >= 32) {
-                    u64 nb = blk + need;
-                    (blk as! *u64)[0] = need | 1;
-                    (nb as! *u64)[0] = rest;
-                    heap_free((nb + 16) as! *void);
-                }
+        if ((old_size + next_size) >= need && unlink_free(next) != 0) {
+            // Merge and mark as used, then shrink if larger than needed.
+            (blk as! *u64)[0] = (old_size + next_size) | 1;
+            u64 rest = (old_size + next_size) - need;
+            if (rest >= 32) {
+                u64 nb = blk + need;
+                (blk as! *u64)[0] = need | 1;
+                (nb as! *u64)[0] = rest;
+                heap_free((nb + 16) as! *void);
             }
+            return ptr;
         }
-        return ptr;
     }
 
     // Allocate a new block and move the data.
