@@ -958,19 +958,17 @@ qu file.qu --no-compile       # semantic analysis only
 qu file.qu -O2 -o output      # optimization level 0-3 (default: -O2)
 ```
 
-### Raw Self-hosting Demo
+### Self-hosting
 
-Currently, Quant is being rewritten in Quant as a self-hosting compiler. You can either try the unfinished version of the Quant compiler written in Quant using the following CMake flag: `-DQUANT_SELF_HOSTED=true`. For example:
+Quant is also being rewritten in Quant as a self-hosted compiler. That implementation lives entirely in `src/self-hosted/` and is **completely separate from the C++ compiler**: the C++ build neither compiles nor invokes it, and it shares no code with the C++ frontend. It is a plain Quant program, built by the C++ compiler like any other `.qu` source:
 
 ```sh
-cmake -B build -DQUANT_SELF_HOSTED=true
+qu src/self-hosted/main.qu -o out -O3
 ```
-
-This will build `src/self-hosted/main.qu`. Alternatively, you can just review the code in `src/self-hosted/`.
 
 **Note**
 
-> The compiler is still in progress, and the code is not finished yet.
+> The self-hosted compiler is still in progress, and the code is not finished yet.
 
 
 ### Optimization levels

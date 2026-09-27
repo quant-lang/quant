@@ -61,14 +61,6 @@ namespace utils::options{
                 continue;
             }
 
-            if (arg == "--from-ast") {
-                if (i + 1 >= argc) {
-                    throw std::runtime_error("Option '--from-ast' requires a path to a QAST binary file");
-                }
-                opts.from_ast = argv[++i];
-                continue;
-            }
-
             if (arg == "-O0") { opts.opt_level = 0; continue; }
             if (arg == "-O1" || arg == "-O" || arg == "-Og") { opts.opt_level = 1; continue; }
             if (arg == "-O2" || arg == "-Os") { opts.opt_level = 2; continue; }
@@ -124,7 +116,7 @@ namespace utils::options{
             }
         }
 
-        if (opts.input_file.empty() && opts.from_ast.empty()) {
+        if (opts.input_file.empty()) {
             throw std::runtime_error("No input file provided");
         }
 
