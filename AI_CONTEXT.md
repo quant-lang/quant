@@ -782,7 +782,7 @@ i32 main() {
 
 ### 1. Struct field size
 
-Doc.md does not mention that all struct fields occupy 8 bytes regardless of their declared type. The implementation (`ir_gen.cpp:102`) always uses `8` for every field. This is a significant ABI/layout detail that the documentation omits.
+docs/lang.md does not mention that all struct fields occupy 8 bytes regardless of their declared type. The implementation (`ir_gen.cpp:102`) always uses `8` for every field. This is a significant ABI/layout detail that the documentation omits.
 
 ### 2. `for` loop `continue` behavior
 
@@ -790,43 +790,43 @@ Doc.md does not mention that all struct fields occupy 8 bytes regardless of thei
 
 ### 3. `switch` on `bool` type
 
-Doc.md states "The switch expression must have type bool, char, or an integer type." The implementation (`semantic.cpp:1519-1522`) confirms this by checking `k >= TypeKind::Bool && k <= TypeKind::U64`.
+docs/lang.md states "The switch expression must have type bool, char, or an integer type." The implementation (`semantic.cpp:1519-1522`) confirms this by checking `k >= TypeKind::Bool && k <= TypeKind::U64`.
 
 ### 4. Reference auto-dereferencing not documented as implicit
 
-Doc.md shows reference field access working without explicit dereferencing, but does not explicitly state that `&T` auto-dereferences for ALL field access and indexing operations. The implementation (`semantic.cpp:566-568`, `semantic.cpp:2023-2025`) confirms this is a pervasive behavior.
+docs/lang.md shows reference field access working without explicit dereferencing, but does not explicitly state that `&T` auto-dereferences for ALL field access and indexing operations. The implementation (`semantic.cpp:566-568`, `semantic.cpp:2023-2025`) confirms this is a pervasive behavior.
 
 ### 5. Method implicit receiver calls
 
-Doc.md does not document that methods can call sibling methods of the same struct without an explicit receiver. The implementation (`semantic.cpp:2558-2567`) confirms this implicit self-call behavior.
+docs/lang.md does not document that methods can call sibling methods of the same struct without an explicit receiver. The implementation (`semantic.cpp:2558-2567`) confirms this implicit self-call behavior.
 
 ### 6. No `else if` as a separate construct
 
-Doc.md shows `else if` syntax. The parser (`parser.cpp:586`) handles this by chaining `ElseIfStmt` nodes. It is not a separate statement type but part of the `if` AST node.
+docs/lang.md shows `else if` syntax. The parser (`parser.cpp:586`) handles this by chaining `ElseIfStmt` nodes. It is not a separate statement type but part of the `if` AST node.
 
 ### 7. Bitcast (`as!`) allows pointer/reference conversions without size check
 
-Doc.md says `as!` requires same-size types. The implementation (`semantic.cpp:2817-2818`) skips the size check for pointer and reference types. This is not documented.
+docs/lang.md says `as!` requires same-size types. The implementation (`semantic.cpp:2817-2818`) skips the size check for pointer and reference types. This is not documented.
 
-### 8. Doc.md says "Number literals are decimal only"
+### 8. docs/lang.md says "Number literals are decimal only"
 
 Confirmed by the lexer (`lexer.cpp`). No hex (`0x`), octal (`0o`), or binary (`0b`) prefix support.
 
 ### 9. String to numeric `as` conversion
 
-Doc.md shows `str s = 42 as str;` and `str t = 3.14 as str;`. The implementation (`semantic.cpp:2806-2808`) confirms numeric-to-string conversion via `as`. However, string-to-numeric conversion is **not** supported - there is no `as` from `str` to any numeric type.
+docs/lang.md shows `str s = 42 as str;` and `str t = 3.14 as str;`. The implementation (`semantic.cpp:2806-2808`) confirms numeric-to-string conversion via `as`. However, string-to-numeric conversion is **not** supported - there is no `as` from `str` to any numeric type.
 
-### 10. Doc.md mentions `else if` spacing inconsistency
+### 10. docs/lang.md mentions `else if` spacing inconsistency
 
-Doc.md shows `else if(x == 10)` without a space, which may confuse formatting. Both `else if (` and `else if(` work since the parser simply looks for the `if` token after `else`.
+docs/lang.md shows `else if(x == 10)` without a space, which may confuse formatting. Both `else if (` and `else if(` work since the parser simply looks for the `if` token after `else`.
 
 ### 11. Implicit `out` variable for struct-returning functions
 
 The semantic analyzer (`semantic.cpp:1432-1446`) declares an implicit `out` variable for struct-returning functions. This is an internal compiler mechanism and not part of the language specification, but it affects how struct return values are handled internally.
 
-### 12. Doc.md says `void main()` in examples
+### 12. docs/lang.md says `void main()` in examples
 
-Doc.md shows `void main()` in the `using` example. However, the `@entry` attribute or a function named `main` with return type `i32` is the standard convention. `void main()` is valid but unusual.
+docs/lang.md shows `void main()` in the `using` example. However, the `@entry` attribute or a function named `main` with return type `i32` is the standard convention. `void main()` is valid but unusual.
 
 
 ## Explicit compile-time evaluation (`#`)

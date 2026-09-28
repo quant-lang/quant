@@ -32,7 +32,7 @@ using std::io;
 ```
 ## Documentation
 
-The documentation is in **Doc.md** file
+The documentation is in [docs/lang.md](lang.md) and code style in [docs/codestyle.md](codestyle.md)
 
 ---
 

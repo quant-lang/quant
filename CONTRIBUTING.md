@@ -24,7 +24,7 @@ For syntax or semantic changes:
 
 1. Add the implementation.
 2. Add tests.
-3. Update `Doc.md`.
+3. Update `docs/lang.md`.
 4. Update `AI_CONTEXT.md` when necessary.
 
 Do not copy features or behavior from other languages without considering whether they fit Quant.
@@ -76,7 +76,7 @@ A minimal ABI port touches these places:
 Then:
 
 1. Add tests. A hello-world program under the new target is enough to start.
-2. Update the target tables in `README.md`, `Doc.md`, and `AI_CONTEXT.md`.
+2. Update the target tables in `README.md`, `docs/lang.md`, and `AI_CONTEXT.md`.
 
 Keep new ABIs behind their own `--target` value. Never change the behavior of
 existing targets.
