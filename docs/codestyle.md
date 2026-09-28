@@ -8,15 +8,16 @@ Style rules for Quant (`.qu`) code. This document covers code style, not languag
 * Types use `PascalCase`.
 * Compiler enum variants use `SCREAMING_SNAKE_CASE`.
 * Boolean names should read as predicates: `is_mut`, `has_body`, `is_comptime`.
-* Use common short names when context is obvious: `p`, `t`, `n`, `i`
+* Use common short names when context is obvious: `p`, `t`, `n`, `i` 
 
-For example:
+ For example:
 ```qu
 Token t = next_token();
 
 if (t.type == TOKEN_EOF)
     return;
 ```
+
 
 Common naming patterns:
 
@@ -188,8 +189,6 @@ Do not comment self-explanatory code
 i++;
 ```
 
-No comment is needed unless the reason for the operation is non-obvious.
-
 ## Error Handling
 
 Keep error messages short and consistent:
@@ -199,8 +198,6 @@ Expected ')'
 Expected expression
 Expected type
 ```
-
-Do not continue processing an invalid node unless recovery has been performed explicitly.
 
 ## Self-Hosted Compiler
 

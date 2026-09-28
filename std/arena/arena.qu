@@ -65,7 +65,7 @@ Region _create(u64 size) {
     return r;
 }
 
-// --- Deprecated free-function wrappers. Prefer the Region methods. ---
+/// Deprecated free-function wrappers. Prefer the Region methods ///
 
 // _region_bump - allocate `size` bytes from a region (16-byte aligned).
 // Returns NULL if the region has no space left.
