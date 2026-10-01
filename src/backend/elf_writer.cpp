@@ -177,6 +177,7 @@ std::vector<uint8_t> write(const mc::Object& obj, mc::TargetArch arch) {
     StringTable shstrtab;
     shstrtab.add(".text");
     shstrtab.add(".data");
+    shstrtab.add(".rodata");
     shstrtab.add(".symtab");
     shstrtab.add(".strtab");
     shstrtab.add(".shstrtab");
@@ -189,7 +190,8 @@ std::vector<uint8_t> write(const mc::Object& obj, mc::TargetArch arch) {
     }
 
     const uint32_t IDX_DATA = n_text + n_rela + 1;
-    const uint32_t IDX_SYMTAB = IDX_DATA + 1;
+    const uint32_t IDX_RODATA = IDX_DATA + 1;
+    const uint32_t IDX_SYMTAB = IDX_RODATA + 1;
     const uint32_t IDX_STRTAB = IDX_SYMTAB + 1;
     const uint32_t IDX_SHSTRTAB = IDX_STRTAB + 1;
     const uint32_t SECTION_COUNT = IDX_SHSTRTAB + 1;
@@ -211,6 +213,7 @@ std::vector<uint8_t> write(const mc::Object& obj, mc::TargetArch arch) {
     }
 
     const uint32_t data_size = static_cast<uint32_t>(obj.data.size());
+    const uint32_t rodata_size = static_cast<uint32_t>(obj.rodata.size());
     const uint32_t symtab_size = static_cast<uint32_t>(1 + syms.size()) * 24;
     const uint32_t strtab_size = static_cast<uint32_t>(strtab.bytes.size());
     const uint32_t shstrtab_size = static_cast<uint32_t>(shstrtab.bytes.size());
@@ -241,6 +244,10 @@ std::vector<uint8_t> write(const mc::Object& obj, mc::TargetArch arch) {
     off += data_size;
 
     off = static_cast<uint32_t>(align8(off));
+    const uint32_t rodata_off = off;
+    off += rodata_size;
+
+    off = static_cast<uint32_t>(align8(off));
     const uint32_t symtab_off = off;
     off += symtab_size;
 
@@ -265,14 +272,15 @@ std::vector<uint8_t> write(const mc::Object& obj, mc::TargetArch arch) {
 
     auto elf_section_of = [&](const mc::Symbol& s) -> uint32_t {
         if (s.undefined) return SHN_UNDEF;
-        if (s.section == 0) return find_text_sec(s.value);
+        if (s.section == mc::SEC_TEXT) return find_text_sec(s.value);
+        if (s.section == mc::SEC_RODATA) return IDX_RODATA;
         return IDX_DATA;
     };
 
     auto adjusted_value = [&](const mc::Symbol& s) -> uint64_t {
         if (s.undefined) return 0;
 
-        if (s.section == 0) {
+        if (s.section == mc::SEC_TEXT) {
             for (uint32_t i = 0; i < n_text; ++i) {
                 if (s.value >= sections[i].start &&
                     s.value < sections[i].start + sections[i].size) {
@@ -339,6 +347,10 @@ std::vector<uint8_t> write(const mc::Object& obj, mc::TargetArch arch) {
     b.pad_to(data_off);
     b.bytes(obj.data.data(), obj.data.size());
 
+    // Read-only data (string literals): no SHF_WRITE.
+    b.pad_to(rodata_off);
+    b.bytes(obj.rodata.data(), obj.rodata.size());
+
     // Symbol table.
     b.pad_to(symtab_off);
     {
@@ -384,6 +396,9 @@ std::vector<uint8_t> write(const mc::Object& obj, mc::TargetArch arch) {
 
     write_shdr(b, shstrtab.offsets.at(".data"), SHT_PROGBITS,
                SHF_ALLOC | SHF_WRITE, data_off, data_size, 0, 0, 8, 0);
+
+    write_shdr(b, shstrtab.offsets.at(".rodata"), SHT_PROGBITS,
+               SHF_ALLOC, rodata_off, rodata_size, 0, 0, 1, 0);
 
     write_shdr(b, shstrtab.offsets.at(".symtab"), SHT_SYMTAB,
                0, symtab_off, symtab_size, IDX_STRTAB, first_global, 8, 24);

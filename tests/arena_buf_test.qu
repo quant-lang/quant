@@ -1,0 +1,54 @@
+load "std::io";
+load "std::arena";
+load "std::string";
+
+using std::string;
+
+i32 main() {
+    mut std::arena::Region r = std::arena::_create(4096);
+
+    mut str buf = r.buf(64);
+    if (!str_empty(buf)) {
+        std::io::print("BAD not-empty\n");
+        return 1;
+    }
+
+    *u8 bytes = buf as! *u8;
+    bytes[0] = 104 as u8;
+    bytes[1] = 105 as u8;
+
+    if (!str_eq(buf, "hi")) {
+        std::io::print("BAD write\n");
+        return 1;
+    }
+
+    if (bytes[64] != (0 as u8)) {
+        std::io::print("BAD term\n");
+        return 1;
+    }
+
+    mut str other = r.buf(64);
+    if (other == buf) {
+        std::io::print("BAD alias\n");
+        return 1;
+    }
+
+    if (!str_empty(other)) {
+        std::io::print("BAD other\n");
+        return 1;
+    }
+
+    mut std::arena::Region tiny = std::arena::_create(32);
+    mut str small = tiny.buf(1024);
+
+    if (!str_empty(small)) {
+        std::io::print("BAD exhausted\n");
+        return 1;
+    }
+
+    tiny.destroy();
+    r.destroy();
+
+    std::io::print("arena buf OK\n");
+    return 0;
+}

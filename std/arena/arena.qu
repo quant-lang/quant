@@ -41,6 +41,24 @@ struct Region {
         offset = 0;
         capacity = 0;
     }
+
+    // buf - allocate a zero-filled writable buffer of `size` bytes + NUL.
+    // Returns an empty string if the region is full, so no cast is needed.
+    str buf(u64 size) {
+        if (size == 0)
+            return "";
+
+        *u8 mem = bump(size + 1) as! *u8;
+        if (mem == (0 as! *u8))
+            return "";
+
+        mut u64 i = 0;
+        while (i <= size) {
+            mem[i] = 0;
+            i++;
+        }
+        return mem as! str;
+    }
 };
 
 // _region_mmap - map `size` bytes of anonymous read/write memory.

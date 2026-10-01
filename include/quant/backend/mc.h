@@ -62,7 +62,7 @@ struct Symbol {
     SymBind bind = SymBind::Local;
     SymType type = SymType::Notype;
     bool undefined = false;
-    uint32_t section = 0;   // 0 = .text, 1 = .data (internal ids)
+    uint32_t section = 0;   // 0 = .text, 1 = .data, 2 = .rodata (internal ids)
     uint64_t value = 0;     // offset within the section
     uint64_t size = 0;
     std::string import_dll;   // non-empty: imported from a PE DLL (undefined symbol)
@@ -72,8 +72,16 @@ struct Symbol {
 struct Object {
     std::vector<uint8_t> text;
     std::vector<uint8_t> data;
+    std::vector<uint8_t> rodata;  // string literals: read-only, no writes are emitted
     std::vector<Relocation> relocs;
     std::vector<Symbol> symbols;
+};
+
+// Internal section ids used by Symbol::section
+enum : uint32_t {
+    SEC_TEXT = 0,
+    SEC_DATA = 1,
+    SEC_RODATA = 2,
 };
 
 } // namespace quant::codegen::mc

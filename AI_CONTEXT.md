@@ -152,6 +152,22 @@ The standard library provides `std::heap::heap_malloc`, `std::heap::heap_realloc
 
 `std::arena::Region` provides a bump allocator backed by `mmap`. Must be explicitly destroyed.
 
+`Region::buf(size)` is the cast-free way to get a writable string buffer:
+it bump-allocates `size + 1` zeroed bytes and returns them as `str`. It exists
+because `str` is an untyped pointer (`*T -> str` is not implicit), so without it
+every buffer call site needs an `as! str` cast:
+
+```
+mut std::arena::Region r = std::arena::_create(4096);
+mut str buf = r.buf(256);            // no cast, NUL-terminated
+i64 n = std::io::read(buf, 256);
+r.destroy();
+```
+
+Returns `""` on exhaustion instead of a null pointer, so the result is always a
+usable `str`. The method is duplicated in `std/win/arena/arena.qu` (the Windows
+`std::arena` override) and is unavailable on ZeroPoint, which has no allocator.
+
 ---
 
 ## 7. Control Flow
@@ -528,6 +544,31 @@ On Linux, the native backend links with `ld` (x86-64) or `ld.lld` (AArch64).
 ### IR
 
 Register-based IR with labels. Key instructions: `IRLoadConst`, `IRBinary`, `IRCall`, `IRReturn`, `IRJump`, `IRBranch`, `IRGetField`, `IRSetField`, `IRCast`, `IRAlloca`, `IRRegionBegin`/`IRRegionAlloc`/`IRRegionEnd`, `IRLoadElement`, `IRStoreElement`.
+
+### Data sections
+
+`mc::Object` (include/quant/backend/mc.h) carries two data buffers, not one:
+
+- `data` — mutable globals (`gbl_N`), `.data` (`SHF_ALLOC | SHF_WRITE`).
+- `rodata` — string literals (`str_N`), read-only (`SHF_ALLOC` on ELF, no `MEM_WRITE` on PE).
+
+`Symbol::section` is an internal id: `SEC_TEXT = 0`, `SEC_DATA = 1`, `SEC_RODATA = 2`
+— not an ELF section index. Both ISels write literals to `rodata` in
+`emit_strings` and globals to `data` in `emit_globals`. All references to either
+are PC-relative (`R_X86_64_PC32`, `ADRP`+`LO12_NC`), so the split changes no
+instruction encoding and no relocation type. The writers translate the id into a
+section index (`elf_section_of` in `elf_writer.cpp`, `symbol_rva` in
+`pe_writer.cpp`). Nothing in codegen writes to a literal, so the read-only flag
+is an invariant rather than an enforced check: `read(buf, n)` on a literal fails
+with `-EFAULT` instead of corrupting neighbouring literals.
+
+`--emit-asm` (`fasmcodegen.cpp`) mirrors the split: `.rodata` for literals,
+`.data` for globals.
+
+PE keeps four sections: `.text`, `.data`, `.rdata` (import descriptors, ILT, IAT,
+DLL names — must stay writable for the IAT), `.rodata` (literals). `SizeOfHeaders`
+is derived from the real header end (`0x80` DOS header + 4 + 20 + 240 + N*40,
+rounded to `FILE_ALIGN`); the section headers must fit inside it.
 
 ### Struct return (sret)
 

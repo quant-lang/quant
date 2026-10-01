@@ -842,9 +842,9 @@ void ISel::emit_start(const IRProgram& program) {
 void ISel::emit_strings(const IRProgram& program) {
     for (const auto& s : program.strings) {
         ensure_symbol(string_label(s.id), mc::SymBind::Local, mc::SymType::Object,
-                      false, 1, obj.data.size(), s.value.size() + 1);
-        obj.data.insert(obj.data.end(), s.value.begin(), s.value.end());
-        obj.data.push_back(0);
+                      false, mc::SEC_RODATA, obj.rodata.size(), s.value.size() + 1);
+        obj.rodata.insert(obj.rodata.end(), s.value.begin(), s.value.end());
+        obj.rodata.push_back(0);
     }
 }
 
@@ -856,7 +856,7 @@ void ISel::emit_globals(const IRProgram& program) {
             obj.data.push_back(0);
         }
         ensure_symbol(global_label(i), mc::SymBind::Local, mc::SymType::Object,
-                      false, 1, obj.data.size(), g.size);
+                      false, mc::SEC_DATA, obj.data.size(), g.size);
         for (uint32_t j = 0; j < g.size; ++j) {
             obj.data.push_back(0);
         }
@@ -877,6 +877,7 @@ void ISel::patch_fixups() {
 void ISel::generate(const IRProgram& program) {
     obj.text.clear();
     obj.data.clear();
+    obj.rodata.clear();
     obj.relocs.clear();
     obj.symbols.clear();
     symbol_index.clear();

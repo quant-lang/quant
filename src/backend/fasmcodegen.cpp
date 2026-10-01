@@ -813,22 +813,25 @@ namespace {
         emit_line("    mov rax, 60");
         emit_line("    syscall");
         }
-        if (win) {
-            if (!program.strings.empty() || !program.globals.empty()) {
-                emit_line("section '.data' data readable writeable");
-            }
-        } else {
-            if (!program.strings.empty() || !program.globals.empty()) {
-                emit_line("section '.data' writeable");
+        // String literals are read-only; globals are writable and go to .data.
+        if (!program.strings.empty()) {
+            emit_line("section '.rodata' data readable");
+            for (const auto& s : program.strings) {
+                emit_line(string_label(s.id) + ":");
+                emit_line(db_bytes(s.value));
             }
         }
-
-        for (const auto& s : program.strings) {
-            emit_line(string_label(s.id) + ":");
-            emit_line(db_bytes(s.value));
+        bool has_globals = false;
+        for (const auto& g : program.globals) {
+            if (!g.is_extern) { has_globals = true; break; }
+        }
+        if (has_globals) {
+            emit_line(win ? "section '.data' data readable writeable"
+                          : "section '.data' writeable");
         }
         for (uint32_t i = 0; i < program.globals.size(); ++i) {
             const auto& g = program.globals[i];
+            if (g.is_extern) continue;
             emit_line(global_label(i) + ":");
             emit_line("    rb " + std::to_string(g.size));
         }

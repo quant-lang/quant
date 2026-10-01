@@ -36,6 +36,8 @@ constexpr uint32_t TEXT_CHARS =
     IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ;
 constexpr uint32_t DATA_CHARS =
     IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE;
+constexpr uint32_t RODATA_CHARS =
+    IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ;
 
 struct Buf {
     std::vector<uint8_t> data;
@@ -252,9 +254,12 @@ std::vector<uint8_t> write(const mc::Object& obj) {
     // --- Section layout ---
     const uint32_t text_size = static_cast<uint32_t>(obj.text.size());
     const uint32_t data_size = static_cast<uint32_t>(obj.data.size());
+    const uint32_t rodata_size = static_cast<uint32_t>(align_to(obj.rodata.size(), 8));
 
-    constexpr uint32_t num_sections = 3;
-    const uint32_t size_of_headers = static_cast<uint32_t>(align_to(0x40 + 4 + 20 + 240 + num_sections * 40, FILE_ALIGN));
+    constexpr uint32_t num_sections = 4;
+    // DOS header (padded to 0x80) + PE sig + COFF header + optional header + section headers.
+    constexpr uint32_t HEADERS_SIZE = 0x80 + 4 + 20 + 240 + num_sections * 40;
+    const uint32_t size_of_headers = static_cast<uint32_t>(align_to(HEADERS_SIZE, FILE_ALIGN));
 
     const uint32_t text_rva = SEC_ALIGN; // first section
     const uint32_t text_off = size_of_headers;
@@ -262,6 +267,8 @@ std::vector<uint8_t> write(const mc::Object& obj) {
     const uint32_t data_off = static_cast<uint32_t>(align_to(text_off + text_size, FILE_ALIGN));
     const uint32_t rdata_rva = static_cast<uint32_t>(align_to(data_rva + data_size, SEC_ALIGN));
     const uint32_t rdata_off = static_cast<uint32_t>(align_to(data_off + data_size, FILE_ALIGN));
+    const uint32_t rodata_rva = static_cast<uint32_t>(align_to(rdata_rva + rdata_size, SEC_ALIGN));
+    const uint32_t rodata_off = static_cast<uint32_t>(align_to(rdata_off + rdata_size, FILE_ALIGN));
 
     // --- Resolve import-related RVAs ---
     // IAT slot RVA for each import; symbol name -> IAT RVA.
@@ -314,7 +321,8 @@ std::vector<uint8_t> write(const mc::Object& obj) {
             if (it != sym_iat_rva.end()) return it->second;
             utils::logger::crash("PE: unresolved undefined symbol: " + s.name);
         }
-        if (s.section == 1) return data_rva + static_cast<uint32_t>(s.value);
+        if (s.section == mc::SEC_DATA) return data_rva + static_cast<uint32_t>(s.value);
+        if (s.section == mc::SEC_RODATA) return rodata_rva + static_cast<uint32_t>(s.value);
         return text_rva + static_cast<uint32_t>(s.value);
     };
 
@@ -353,9 +361,9 @@ std::vector<uint8_t> write(const mc::Object& obj) {
     if (!start) utils::logger::crash("PE: no _start symbol found");
     const uint32_t entry_rva = text_rva + static_cast<uint32_t>(start->value);
 
-    const uint32_t size_of_image = static_cast<uint32_t>(align_to(rdata_rva + rdata_size, SEC_ALIGN));
+    const uint32_t size_of_image = static_cast<uint32_t>(align_to(rodata_rva + rodata_size, SEC_ALIGN));
     const uint32_t size_of_code = static_cast<uint32_t>(align_to(text_size, SEC_ALIGN));
-    const uint32_t size_of_init_data = static_cast<uint32_t>(align_to(data_size + rdata_size, SEC_ALIGN));
+    const uint32_t size_of_init_data = static_cast<uint32_t>(align_to(data_size + rdata_size + rodata_size, SEC_ALIGN));
 
     // --- Emit final image ---
     Buf out;
@@ -366,9 +374,11 @@ std::vector<uint8_t> write(const mc::Object& obj) {
                     import_dir_rva, import_dir_size);
 
     out.pad_to(0x80 + 4 + 20 + 240);
+    // Section headers must stay inside SizeOfHeaders.
     write_section_header(out, ".text", text_size, text_rva, text_size, text_off, TEXT_CHARS);
     write_section_header(out, ".data", data_size, data_rva, data_size, data_off, DATA_CHARS);
     write_section_header(out, ".rdata", rdata_size, rdata_rva, rdata_size, rdata_off, DATA_CHARS);
+    write_section_header(out, ".rodata", rodata_size, rodata_rva, rodata_size, rodata_off, RODATA_CHARS);
 
     out.pad_to(text_off);
     out.bytes(text.data(), text.size());
@@ -378,6 +388,9 @@ std::vector<uint8_t> write(const mc::Object& obj) {
 
     out.pad_to(rdata_off);
     out.bytes(rd.data.data(), rd.data.size());
+
+    out.pad_to(rodata_off);
+    out.bytes(obj.rodata.data(), obj.rodata.size());
 
     return std::move(out.data);
 }

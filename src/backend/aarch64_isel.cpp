@@ -493,7 +493,7 @@ void AArch64ISel::emit_inst(const IRProgram& program, const IRFunction& fn, cons
             const auto& lit = program.strings[x.string_id];
             const std::string label = string_label(lit.id);
             ensure_symbol(label, mc::SymBind::Local, mc::SymType::Object,
-                          false, 1, obj.data.size(), lit.value.size() + 1);
+                          false, mc::SEC_RODATA, obj.rodata.size(), lit.value.size() + 1);
             // ADRP X0, symbol@PAGE
             text.reloc(label, mc::RelType::AARCH64_ADR_PREL_PG_HI21, 0);
             text.emit32(0x90000000u);
@@ -875,9 +875,9 @@ void AArch64ISel::emit_start(const IRProgram& program) {
 void AArch64ISel::emit_strings(const IRProgram& program) {
     for (const auto& s : program.strings) {
         ensure_symbol(string_label(s.id), mc::SymBind::Local, mc::SymType::Object,
-                      false, 1, obj.data.size(), s.value.size() + 1);
-        obj.data.insert(obj.data.end(), s.value.begin(), s.value.end());
-        obj.data.push_back(0);
+                      false, mc::SEC_RODATA, obj.rodata.size(), s.value.size() + 1);
+        obj.rodata.insert(obj.rodata.end(), s.value.begin(), s.value.end());
+        obj.rodata.push_back(0);
     }
 }
 
@@ -887,7 +887,7 @@ void AArch64ISel::emit_globals(const IRProgram& program) {
         if (g.is_extern) continue;
         while (obj.data.size() % 8u != 0) obj.data.push_back(0);
         ensure_symbol(global_label(i), mc::SymBind::Local, mc::SymType::Object,
-                      false, 1, obj.data.size(), g.size);
+                      false, mc::SEC_DATA, obj.data.size(), g.size);
         for (uint32_t j = 0; j < g.size; ++j) obj.data.push_back(0);
     }
 }
@@ -937,6 +937,7 @@ void AArch64ISel::patch_fixups() {
 void AArch64ISel::generate(const IRProgram& program) {
     obj.text.clear();
     obj.data.clear();
+    obj.rodata.clear();
     obj.relocs.clear();
     obj.symbols.clear();
     symbol_index.clear();

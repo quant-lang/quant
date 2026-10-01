@@ -793,6 +793,40 @@ region r {
 ```alloc(T, count);``` — typed allocation, returns `*T` where count is number of elements.
 ```alloc(size);``` — untyped allocation, returns `*void` where size is in bytes.
 
+---
+
+## Buffers: `str` literals are read-only
+
+`str` is a bare pointer with no length or capacity. String literals live in
+`.rodata`, so `mut` does **not** make them writable:
+
+```qu
+mut str buf = "";
+read(buf, 256); // -EFAULT
+````
+
+To get a writable buffer, allocate memory:
+
+```qu
+region r {
+    *i8 buf = alloc(i8, 256);
+    i64 n = read(buf as! str, 256);
+}
+```
+
+`*T -> str` requires an explicit cast. `std::arena::Region::buf` avoids it by
+returning a zero-filled, NUL-terminated `str`:
+
+```qu
+mut str buf = r.buf(256);
+i64 n = read(buf, 256);
+```
+
+`buf(size)` returns `""` if the region is exhausted. Arena memory is released
+with `r.destroy()`. Use arenas for temporary/long-lived grouped allocations;
+use `std::heap` for repeated allocations. No bounds checks are performed.
+
+
 Nested regions are also supported:
 ```
 region outer {

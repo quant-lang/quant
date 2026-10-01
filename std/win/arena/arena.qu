@@ -33,6 +33,24 @@ struct Region {
         offset = 0;
         capacity = 0;
     }
+
+    // buf - allocate a writable buffer of `size` bytes plus a NUL terminator.
+    // The buffer is zero-filled, so it is always a valid `str` even when
+    // nothing is read into it. Returns an empty string if the region is full,
+    // so the result never needs a cast at the call site:
+    //   mut str buf = r.buf(256);
+    //   i64 n = std::io::read(buf, 256);
+    str buf(u64 size) {
+        if (size == 0) { return ""; }
+        *u8 mem = bump(size + 1) as! *u8;
+        if (mem == (0 as! *u8)) { return ""; }
+        mut u64 i = 0;
+        while (i <= size) {
+            mem[i] = 0;
+            i++;
+        }
+        return mem as! str;
+    }
 };
 
 // _region_mmap - map `size` bytes of readable/writable memory.
