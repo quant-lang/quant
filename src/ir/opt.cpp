@@ -327,9 +327,11 @@ std::optional<int64_t> fold_float_compare(IRBinaryOp op, double lhs, double rhs)
 // (an 8-byte copy), same-width value casts, and widening value casts, which
 // extend the low bytes of the slot by the source signedness. Narrowing casts
 // are not folded: x86-64 sign-extends to a signed target while AArch64
-// zero-extends, so there is no single value to fold to.
+// zero-extends, so there is no single value to fold to. Number-to-string
+// casts call the format runtime, so they never fold either.
 std::optional<int64_t> fold_cast(const IRCast& cast, int64_t value) {
     if (cast.kind == ast::CastKind::Bitcast) return value;
+    if (cast.kind == ast::CastKind::Format) return std::nullopt;
 
     const int src = int_kind_size(cast.src_kind);
     const int dst = int_kind_size(cast.target_kind);
@@ -893,6 +895,10 @@ struct LoopRegion {
 };
 
 bool is_region_pure(const IRInst& inst) {
+    // A Format cast is an IRCast but not pure: it calls the format runtime.
+    if (const auto* c = std::get_if<IRCast>(&inst)) {
+        return c->kind != ast::CastKind::Format;
+    }
     return std::holds_alternative<IRLoadConst>(inst) ||
            std::holds_alternative<IRLoadLocal>(inst) ||
            std::holds_alternative<IRStoreLocal>(inst) ||
@@ -1028,6 +1034,9 @@ std::vector<LoopOp> compile_loop_region(const std::vector<IRInst>& body, const L
                 op.dst = x.dst; op.a = x.lhs; op.b = x.rhs;
             },
             [&](const IRCast& x) {
+                // `number as str` calls the format runtime (which allocates),
+                // so such a region is not a pure arithmetic loop.
+                if (x.kind == ast::CastKind::Format) { pure = false; return; }
                 op.kind = LoopOp::Cast; op.dst = x.dst; op.a = x.src;
                 op.type = x.src_kind; op.type2 = x.target_kind; op.cast = x.kind;
             },

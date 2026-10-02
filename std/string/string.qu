@@ -1,116 +1,197 @@
 // std::string
 //
-// String functions. Pure Quant implementation.
-// str_concat, str_sub, str_copy allocate memory from a caller-provided
-// region (std::arena::Region). See std/arena/arena.qu for _create/_destroy.
+// String helpers and the owning `string` type.
+// `str` is an alias for `*char`, so aи `str` parameter is a bare pointer to
+// NUL-terminated bytes and a string literal can be passed directly, without
+// a cast.
+//
+// `string` owns its bytes on the heap (std::heap) and always keeps a
+// terminating \0, so cstr() can be handed to any `str` parameter.
 //
 // Usage:
 //   load "std::string";
-//   load "std::arena";
+//   using std::string;
 //
-//   i32 main() {
-//       str s = "hello";
-//       std::io::print(str_len(s) as str);        // 5
-//       std::io::print(str_eq(s, "hello") as str); // 1 (true)
+//   void main() {
+//       mut string s = string_make("hello");
+//       s.push_str(" world");
+//       s.push(33 as char);
+//       std::io::print(s.cstr());       // hello world!
+//       std::io::print(s.len() as str);  // 12
 //
-//       mut std::arena::Region r = std::arena::_create(1024);
-//
-//       str sub = str_sub(&r, s, 1, 3);           // "ell"
-//       std::io::print(sub);
-//
-//       str cat = str_concat(&r, s, " world");    // "hello world"
-//       std::io::print(cat);
-//
-//       u8 c = str_char_at(s, 0);                 // 'h'
-//       std::io::print_char(c);
-//       std::arena::_destroy(&r);
-//       return 0;
+//       string part = s.sub(6, 5);      // world
+//       string all = s.concat("?");      // hello world!?
+//       part.free();
+//       all.free();
+//       s.free();
 //   }
+//
+// Notes:
+//   - string_make copies; the source can be a literal or any NUL-terminated
+//     buffer.
+//   - get and len are unchecked.
+//   - free must be called to release memory.
 
 module "std::string";
 
-load "std::arena";
+load "std::heap";
 
-// str_len - length of a string (without the terminating \0).
-u64 str_len(str s) {
-    *u8 b = s as! *u8;
-    mut u64 i = 0;
-    while (b[i] != 0) {
-        i++;
+struct string {
+    mut *char data;
+    mut u64 len;
+    mut u64 cap;
+
+    // len - number of bytes, without the terminating \0.
+    u64 len() {
+        return len;
     }
+
+    // is_empty - true if the string holds no bytes.
+    bool is_empty() {
+        return len == 0;
+    }
+
+    // cstr - the contents as a NUL-terminated string (borrow, no copy).
+    // Valid until the string is mutated or freed.
+    str cstr() {
+        return data;
+    }
+
+    // get - the byte at `index` (unchecked).
+    char get(u64 index) {
+        return data[index];
+    }
+
+    // eq - compare the contents with `other`.
+    bool eq(str other) {
+        return str_eq(data, other);
+    }
+
+    // reserve - make room for `need` bytes plus the terminator.
+    // Returns false when the allocation fails, leaving the string unchanged.
+    bool reserve(u64 need) {
+        if (cap >= need + 1)
+            return true;
+        mut u64 ncap = cap;
+        if (ncap == 0)
+            ncap = 16;
+        while (ncap < need + 1)
+            ncap *= 2;
+        *void p = std::heap::heap_realloc(data as! *void, ncap);
+        if (p == (0 as! *void))
+            return false;
+        data = p as! *char;
+        cap = ncap;
+        return true;
+    }
+
+    // push - append a byte. The string is unchanged if the allocation fails.
+    void push(char c) {
+        if (!reserve(len + 1))
+            return;
+        data[len] = c;
+        len++;
+        data[len] = 0;
+    }
+
+    // push_str - append a NUL-terminated string.
+    // The string is unchanged if the allocation fails.
+    void push_str(str s) {
+        u64 n = str_len(s);
+        if (!reserve(len + n))
+            return;
+        for (mut u64 i = 0; i < n; i++)
+            data[len + i] = s[i];
+        len += n;
+        data[len] = 0;
+    }
+
+    // sub - a new string with bytes [start, start + count).
+    // An out-of-range start yields an empty string; count is clamped to the
+    // remaining bytes.
+    string sub(u64 start, mut u64 count) {
+        if (start >= len)
+            return string_empty();
+        u64 avail = len - start;
+        if (count > avail)
+            count = avail;
+        // @init does not zero memory, so every field is set before reserve.
+        mut string part = string_empty();
+        if (!part.reserve(count))
+            return part;
+        for (mut u64 i = 0; i < count; i++)
+            part.data[i] = data[start + i];
+        part.len = count;
+        part.data[count] = 0;
+        return part;
+    }
+
+    // concat - a new string holding the contents followed by `other`.
+    string concat(str other) {
+        mut string res = string_empty();
+        if (!res.reserve(len + str_len(other)))
+            return res;
+        for (mut u64 i = 0; i < len; i++)
+            res.data[i] = data[i];
+        res.len = len;
+        res.push_str(other);
+        return res;
+    }
+
+    // free - release the backing allocation. free() on an empty string is a
+    // no-op.
+    void free() {
+        if (cap > 0)
+            std::heap::heap_free(data as! *void);
+        data = 0 as! *char;
+        len = 0;
+        cap = 0;
+    }
+};
+
+// str_len - number of bytes in a NUL-terminated string, without the \0.
+u64 str_len(str s) {
+    mut u64 i = 0;
+    while (s[i] != 0)
+        i++;
     return i;
 }
 
-// str_eq - check if two strings are equal.
+// str_eq - compare the contents of two NUL-terminated strings.
 bool str_eq(str a, str b) {
-    *u8 pa = a as! *u8;
-    *u8 pb = b as! *u8;
     mut u64 i = 0;
     while (true) {
-        u8 ca = pa[i];
-        u8 cb = pb[i];
-        if (ca != cb) { return false; }
-        if (ca == 0) { return true; }
+        char ca = a[i];
+        char cb = b[i];
+        if (ca != cb)
+            return false;
+        if (ca == 0)
+            return true;
         i++;
     }
+    // unreachable: the loop above only leaves through a return
     return false;
 }
 
-// str_neq - check if two strings are different.
-bool str_neq(str a, str b) {
-    return !str_eq(a, b);
+// string_empty - an empty string that owns no memory.
+string string_empty() {
+    @init mut string s;
+    s.data = 0 as! *char;
+    s.len = 0;
+    s.cap = 0;
+    return s;
 }
 
-// str_empty - check if a string is empty.
-bool str_empty(str s) {
-    *u8 b = s as! *u8;
-    return b[0] == 0;
-}
-
-// str_char_at - get the byte at `index`.
-u8 str_char_at(str s, u64 index) {
-    *u8 b = s as! *u8;
-    return b[index];
-}
-
-// str_concat - concatenate two strings (arena-allocated).
-str str_concat(mut &std::arena::Region r, str a, str b) {
-    u64 la = str_len(a);
-    u64 lb = str_len(b);
-    *u8 buf = r.bump(la + lb + 1) as! *u8;
-    if (buf == (0 as! *u8)) { return (0 as! *u8) as! str; }
-    *u8 pa = a as! *u8;
-    *u8 pb = b as! *u8;
-    for (mut u64 i = 0; i < la; i++) {
-        buf[i] = pa[i];
-    }
-    // Copy b including its trailing \0.
-    for (mut u64 j = 0; j <= lb; j++) {
-        buf[la + j] = pb[j];
-    }
-    return buf as! str;
-}
-
-// str_sub - extract a substring starting at `start` with length `len`.
-str str_sub(mut &std::arena::Region r, str s, u64 start, u64 len) {
-    *u8 buf = r.bump(len + 1) as! *u8;
-    if (buf == (0 as! *u8)) { return (0 as! *u8) as! str; }
-    *u8 b = s as! *u8;
-    for (mut u64 i = 0; i < len; i++) {
-        buf[i] = b[start + i];
-    }
-    buf[len] = 0;
-    return buf as! str;
-}
-
-// str_copy - copy a string (arena-allocated).
-str str_copy(mut &std::arena::Region r, str s) {
-    u64 n = str_len(s);
-    *u8 buf = r.bump(n + 1) as! *u8;
-    if (buf == (0 as! *u8)) { return (0 as! *u8) as! str; }
-    *u8 b = s as! *u8;
-    for (mut u64 i = 0; i <= n; i++) {
-        buf[i] = b[i];
-    }
-    return buf as! str;
+// string_make - copy `src` into a fresh heap allocation.
+// Returns an empty string when the allocation fails.
+string string_make(str src) {
+    mut string s = string_empty();
+    u64 n = str_len(src);
+    if (!s.reserve(n))
+        return s;
+    for (mut u64 i = 0; i < n; i++)
+        s.data[i] = src[i];
+    s.len = n;
+    s.data[n] = 0;
+    return s;
 }

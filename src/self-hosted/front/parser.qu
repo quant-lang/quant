@@ -114,7 +114,7 @@ Token at_token(mut *Parser p, i32 n) {
 Token expect(mut *Parser p, TokenType type, str msg) {
     if (!check(p, type)) {
         mut *ErrorNode e = p.arena.bump(#sizeof(ErrorNode)) as! *ErrorNode;
-        e.msg = slice_make<u8>(msg as! *u8, str_len(msg));
+        e.msg = slice_make<u8>(msg, str_len(msg));
         e.line = p.current.loc.line;
         e.column = p.current.loc.column;
         e.length = p.current.loc.length;
@@ -172,7 +172,7 @@ void sync(mut *Parser p) {
 
 void error_at(mut *Parser p, Token t, str msg) {
     mut *ErrorNode e = p.arena.bump(#sizeof(ErrorNode)) as! *ErrorNode;
-    e.msg = slice_make<u8>(msg as! *u8, str_len(msg));
+    e.msg = slice_make<u8>(msg, str_len(msg));
     e.line = t.loc.line;
     e.column = t.loc.column;
     e.length = t.loc.length;
@@ -203,8 +203,19 @@ bool is_type_token(TokenType t) {
 }
 
 // match_prim_type - if `current` is a builtin type keyword, consume it and
-// return the corresponding TypeNode.
+// return the corresponding TypeNode. `str` is an alias for *char, so it
+// desugars to a pointer node whose target is char (u8).
 *TypeNode match_prim_type(mut *Parser p) {
+    if (p.current.type == TOKEN_STR_TYPE) {
+        advance(p);
+        mut *TypeNode target = alloc_type(p.arena);
+        target.kind = TYPE_U8;
+        mut *TypeNode t = alloc_type(p.arena);
+        t.kind = TYPE_POINTER;
+        t.pointed = target;
+        return t;
+    }
+
     TypeKind k = primitive_type_kind(p.current.type);
     advance(p);
     return prim_type(p, k);

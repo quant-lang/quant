@@ -25,12 +25,12 @@ struct Lexer {
     mut i32 start_column;
 
     slice<u8> span(u64 from, u64 to) {
-        return slice_make<u8>(((((buffer as! *u8) as! u64) + from) as! *u8), to - from);
+        return slice_make<u8>(((buffer as! u64) + from) as! *u8, to - from);
     }
     char peek(){
         if (pos >= str_len(buffer))
             return '\0';
-        return str_char_at(buffer, pos);
+        return buffer[pos];
     }
     char advance(){
         char c = peek();
@@ -75,17 +75,17 @@ struct Lexer {
         mut u64 i = start;
         u64 end = pos;
 
-        while (i < end && is_digit(str_char_at(buffer, i))) {
-            u8 d = str_char_at(buffer, i);
+        while (i < end && is_digit(buffer[i])) {
+            u8 d = buffer[i];
             value = value * 10.0 + (d - '0') as f64;
             inum = inum * 10 + ((d - '0') as u64);
             i++;
         }
 
-        if (i < end && str_char_at(buffer, i) == '.') {
+        if (i < end && buffer[i] == '.') {
             i++;
-            while (i < end && is_digit(str_char_at(buffer, i))) {
-                u8 d = str_char_at(buffer, i);
+            while (i < end && is_digit(buffer[i])) {
+                u8 d = buffer[i];
                 value = value + ((d - '0') as f64) * frac;
                 frac = frac * 0.1;
                 i++;
@@ -103,7 +103,7 @@ struct Lexer {
         }
 
         if (peek() == '.' && pos + 1 < str_len(buffer) &&
-            is_digit(str_char_at(buffer, pos + 1))) {
+            is_digit(buffer[pos + 1])) {
             advance();
 
             while (is_digit(peek())) {
@@ -215,7 +215,7 @@ struct Lexer {
 
         return make_token(TOKEN_IDENT);
     }
-    Token string(){
+    Token string_literal(){
         while (peek() != '"' && !is_at_end()) {
             if (peek() == '\\') {
                 advance();
@@ -294,7 +294,7 @@ struct Lexer {
         } else if (is_alpha(c) || c == '_') {
             return identifier();
         } else if (c == '"') {
-            return string();
+            return string_literal();
         } else if (c == '\'') {
             return char_literal();
         }
@@ -379,7 +379,7 @@ struct Lexer {
                 }
                 else if (match('*')) {
                     while (!is_at_end()) {
-                        if (peek() == '*' && pos + 1 < str_len(buffer) && str_char_at(buffer, pos + 1) == '/') {
+                        if (peek() == '*' && pos + 1 < str_len(buffer) && buffer[pos + 1] == '/') {
                             advance();
                             advance();
                             break;

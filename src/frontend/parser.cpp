@@ -1300,7 +1300,8 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
     if (match(TOKEN_F32))     return ctx.types.get_builtin(TypeKind::F32);
     if (match(TOKEN_F64))     return ctx.types.get_builtin(TypeKind::F64);
 
-    if (match(TOKEN_STR_TYPE)) return ctx.types.get_builtin(TypeKind::String);
+    // `str` is an alias for *char (*u8), not a type of its own.
+    if (match(TOKEN_STR_TYPE)) return ctx.types.get_pointer(ctx.types.get_builtin(TypeKind::U8));
     if (match(TOKEN_CHAR_TYPE)) return ctx.types.get_builtin(TypeKind::U8);
 
     if (match(TOKEN_IDENT)) {

@@ -16,12 +16,25 @@
 | u64  | 8    | unsigned long      |
 | f32  | 4    | float              |
 | f64  | 8    | double             |
-| str  | 8    | string (pointer)   |
+| str  | 8    | alias for `*char`  |
+| char | 1    | alias for `u8`     |
 | *T     | 8 | pointer to T       |
 | &T     | 8 | reference to T     |
 | nullptr | 8 | "no pointer" value |
 
 Integer literals are i32 by default. Float literals are f64 by default. Boolean literals `true` and `false` are `bool`.
+
+`str` is not a type of its own: it is exactly `*char` (`char` is exactly `u8`), a
+bare pointer to NUL-terminated bytes with no length and no capacity. The two
+spellings are interchangeable, so a string literal fits any `*char` binding:
+
+```qu
+*char s = "10";     // literal, .rodata, read-only
+str t = "hello";    // same type as *char
+u8 c = s[0];        // str is a real pointer: it can be indexed
+u64 n = sizeof(str);// 8
+void print_len(*char p);   // a literal can be passed directly
+```
 
 ## `nullptr`
 
@@ -323,7 +336,8 @@ Each desugars to `x = x op y` at parse time.
 
 ### Value conversion (`as`)
 
-Converts between numeric types. Also converts numbers to string.
+Converts between numeric types. Also converts numbers to string (`str` is
+`*char`, so this is a cast to a pointer).
 
 ```
 i64 a = 42 as i64;       // i32 -> i64
@@ -797,8 +811,8 @@ region r {
 
 ## Buffers: `str` literals are read-only
 
-`str` is a bare pointer with no length or capacity. String literals live in
-`.rodata`, so `mut` does **not** make them writable:
+`str` (`*char`) is a bare pointer with no length or capacity. String literals
+live in `.rodata`, so `mut` does **not** make them writable:
 
 ```qu
 mut str buf = "";
@@ -809,13 +823,14 @@ To get a writable buffer, allocate memory:
 
 ```qu
 region r {
-    *i8 buf = alloc(i8, 256);
-    i64 n = read(buf as! str, 256);
+    *char buf = alloc(char, 256);
+    i64 n = read(buf, 256);
 }
 ```
 
-`*T -> str` requires an explicit cast. `std::arena::Region::buf` avoids it by
-returning a zero-filled, NUL-terminated `str`:
+Since `str` is `*char`, no cast is needed to pass a buffer to `read`. To get a
+zero-filled, NUL-terminated buffer of a fixed size from an existing region, use
+`std::arena::Region::buf`:
 
 ```qu
 mut str buf = r.buf(256);
@@ -861,6 +876,7 @@ u64 sz = sizeof(i64);   // 8
 u64 sz = sizeof(u8);    // 1
 u64 sz = sizeof(*T);    // 8  (pointer)
 u64 sz = sizeof(&T);    // 8  (reference)
+u64 sz = sizeof(str);   // 8  (str is *char, so a pointer size)
 ```
 
 In generic functions, `sizeof(T)` substitutes the concrete type at compile time:

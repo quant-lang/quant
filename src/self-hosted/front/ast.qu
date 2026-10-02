@@ -30,8 +30,6 @@ enum TypeKind {
     TYPE_F32,
     TYPE_F64,
 
-    TYPE_STRING,
-
     TYPE_STRUCT,
     TYPE_POINTER,
     TYPE_REFERENCE,

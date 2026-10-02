@@ -14,8 +14,11 @@ Quant is an imperative, statically-typed systems language. Syntax uses C-like br
 - No type inference for variables or return types.
 - No garbage collector, no RAII, no automatic destructors.
 - Memory is managed via regions (arena) and explicit heap calls.
-- Strings are immutable `str` (pointer to bytes, 8 bytes).
-- `char` is an alias for `u8`.
+- `str` is an alias for `*char`; `char` is an alias for `u8`. Both are real
+  pointers in the type system: a string literal fits any `*char` binding, `str`
+  can be indexed, passed to a `*char` parameter and measured with `sizeof`.
+- String literals live in read-only memory and carry no length; `mut` does not
+  make them writable.
 
 Integer literals default to `i32`. Float literals default to `f64`. Boolean literals are `true`/`false` of type `bool`.
 
@@ -39,7 +42,8 @@ Integer literals default to `i32`. Float literals default to `f64`. Boolean lite
 | u64      | 8 bytes              | unsigned long                            |
 | f32      | 4 bytes              | float                                    |
 | f64      | 8 bytes              | double (default for float literals)      |
-| str      | 8 bytes              | pointer to string data                   |
+| str      | 8 bytes              | alias for `*char`                        |
+| char     | 1 byte               | alias for `u8`                           |
 | *T       | 8 bytes              | pointer to T                             |
 | &T       | 8 bytes              | reference to T                           |
 | nullptr  | 8 bytes              | null pointer value                       |
@@ -74,6 +78,10 @@ C-style enums with `i32` values starting at 0. Variants are accessible by bare n
 ```
 
 Without `@init`, an immutable variable without an initializer is a compile error.
+
+`@init` does **not** zero memory. A local struct declared with `@init` holds
+indeterminate fields until every field is assigned, so factories in std
+(`string_empty`, `slice_empty`, `option_none`) set all fields explicitly.
 
 ---
 
@@ -152,14 +160,12 @@ The standard library provides `std::heap::heap_malloc`, `std::heap::heap_realloc
 
 `std::arena::Region` provides a bump allocator backed by `mmap`. Must be explicitly destroyed.
 
-`Region::buf(size)` is the cast-free way to get a writable string buffer:
-it bump-allocates `size + 1` zeroed bytes and returns them as `str`. It exists
-because `str` is an untyped pointer (`*T -> str` is not implicit), so without it
-every buffer call site needs an `as! str` cast:
+`Region::buf(size)` returns a writable string buffer: it bump-allocates
+`size + 1` zeroed bytes and returns them as `str` (i.e. `*char`):
 
 ```
 mut std::arena::Region r = std::arena::_create(4096);
-mut str buf = r.buf(256);            // no cast, NUL-terminated
+mut str buf = r.buf(256);            // zero-filled, NUL-terminated
 i64 n = std::io::read(buf, 256);
 r.destroy();
 ```
@@ -448,7 +454,8 @@ Literals adapt to the target type when the value fits. Mixed-type binary express
 
 ### as - value conversion
 
-Numeric <-> numeric, or numeric -> string.
+Numeric <-> numeric, or numeric -> string. Since `str` is `*char`, the latter
+is a cast to a pointer and lowers to a call into the `std::format` runtime.
 
 ```
 i64 a = 42 as i64;
@@ -503,6 +510,10 @@ All stdlib is written in pure Quant. Key modules:
 On Linux, I/O uses `@syscall`. On Windows, `@import` for WinAPI. On ZeroPoint (`std/zp/io/io.qu`), single-buffer syscalls: `print(str)`, `read(str)`, `open(str)` — the OS computes everything except the buffer.
 
 `option<T>` uses `@guard(has_value)` on the value field. `either<L,R>` uses guards on both variants.
+
+`std::string` holds two things: `str_len`/`str_eq` over plain `str` (an alias
+for `*char`), and the owning `string` type (`{data, len, cap}`) with `push`,
+`push_str`, `get`, `cstr`, `sub`, `concat` and `free` on top of `std::heap`.
 
 ---
 
@@ -847,7 +858,7 @@ docs/lang.md shows `else if` syntax. The parser (`parser.cpp:586`) handles this 
 
 ### 7. Bitcast (`as!`) allows pointer/reference conversions without size check
 
-docs/lang.md says `as!` requires same-size types. The implementation (`semantic.cpp:2817-2818`) skips the size check for pointer and reference types. This is not documented.
+docs/lang.md says `as!` requires same-size types. The implementation (`semantic.cpp:2940-2945`) skips the size check for pointer and reference types. This is not documented.
 
 ### 8. docs/lang.md says "Number literals are decimal only"
 
@@ -855,7 +866,7 @@ Confirmed by the lexer (`lexer.cpp`). No hex (`0x`), octal (`0o`), or binary (`0
 
 ### 9. String to numeric `as` conversion
 
-docs/lang.md shows `str s = 42 as str;` and `str t = 3.14 as str;`. The implementation (`semantic.cpp:2806-2808`) confirms numeric-to-string conversion via `as`. However, string-to-numeric conversion is **not** supported - there is no `as` from `str` to any numeric type.
+docs/lang.md shows `str s = 42 as str;` and `str t = 3.14 as str;`. The implementation (`semantic.cpp:2926-2939`) confirms numeric-to-string conversion via `as` (`str` is `*char`, so this is the one value cast whose target is a pointer). However, string-to-numeric conversion is **not** supported - there is no `as` from `str` to any numeric type.
 
 ### 10. docs/lang.md mentions `else if` spacing inconsistency
 

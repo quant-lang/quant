@@ -4,7 +4,7 @@ i32 main() {
     std::io::print("Press a key:");
     mut i64 c = std::io::read_char();
     std::io::print("You pressed: ");
-    std::io::print_char(c as i8);
-    std::io::print_char(10 as i8);
+    std::io::print_char(c as char);
+    std::io::print_char('\n');
     return 0 as i32;
 }

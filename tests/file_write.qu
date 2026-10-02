@@ -11,7 +11,7 @@ i32 main() {
 
     std::io::print("opened fd=");
     std::io::print(fd as str);
-    std::io::print_char(10 as i8);
+    std::io::print_char('\n');
 
     mut i64 written = std::io::write(fd, "Hello from Quant!\n", 18 as i64);
 

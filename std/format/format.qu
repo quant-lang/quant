@@ -33,24 +33,24 @@ struct Buf64 {
 
 // Copy a NUL-terminated buffer into a fresh heap allocation and return it
 // as a string. Falls back to the scratch buffer if allocation fails.
-str to_heap(*i8 src) {
-    mut i32 n = 0;
+str to_heap(str src) {
+    mut i64 n = 0;
     while (src[n] != 0) {
         n++;
     }
-    *i8 buf = std::heap::heap_malloc((n + 1) as u64) as! *i8;
-    if (buf == (0 as! *i8)) {
-        return src as! str;
+    str buf = std::heap::heap_malloc((n + 1) as u64) as! str;
+    if (buf == (0 as! str)) {
+        return src;
     }
-    for (mut i32 i = 0; i <= n; i++) {
+    for (mut i64 i = 0; i <= n; i++) {
         buf[i] = src[i];
     }
-    return buf as! str;
+    return buf;
 }
 
 // Write the decimal digits of `v` into `p` backwards, ending at index 30.
 // Returns the index just before the first digit.
-i32 digits_u64(u64 v, *i8 p) {
+i32 digits_u64(u64 v, str p) {
     mut u64 val = v;
     mut i32 i = 30;
     if (val == 0) {
@@ -60,7 +60,7 @@ i32 digits_u64(u64 v, *i8 p) {
         while (val != 0) {
             u64 q = val / 10;
             u64 r = val - q * 10;
-            p[i] = (48 + r) as i8;
+            p[i] = (48 + r) as char;
             val = q;
             i--;
         }
@@ -70,7 +70,7 @@ i32 digits_u64(u64 v, *i8 p) {
 
 // Copy the digits [first+1..30] to the front of the buffer (offset by `neg`)
 // and NUL-terminate.
-void finish(*i8 p, i32 first, i32 neg) {
+void finish(str p, i32 first, i32 neg) {
     mut i32 src = first + 1;
     mut i32 dst = neg;
     while (src <= 30) {
@@ -86,7 +86,7 @@ void finish(*i8 p, i32 first, i32 neg) {
 
 @export("qk_format_i64")
 str format_i64(i64 v) {
-    *i8 p = (&g_buf32) as! *i8;
+    str p = (&g_buf32) as! str;
     mut i32 neg = 0;
     mut u64 val = 0;
     if (v < 0) {
@@ -102,7 +102,7 @@ str format_i64(i64 v) {
 
 @export("qk_format_u64")
 str format_u64(u64 v) {
-    *i8 p = (&g_buf32) as! *i8;
+    str p = (&g_buf32) as! str;
     i32 i = digits_u64(v, p);
     finish(p, i, 0);
     return to_heap(p);
@@ -119,7 +119,7 @@ str format_f64(f64 v) {
     if (v < -1.7976931348623157e308) {
         return "-inf";
     }
-    *i8 p = (&g_buf64) as! *i8;
+    str p = (&g_buf64) as! str;
     mut i32 neg = 0;
     mut f64 x = v;
     if (v < 0.0) {
@@ -157,7 +157,7 @@ str format_f64(f64 v) {
             if ((d < 0) || (d > 9)) {
                 done = 1;
             } else {
-                p[dst] = (48 + d) as i8;
+                p[dst] = (48 + d) as char;
                 dst++;
                 nd++;
                 frac = frac - (d as f64);

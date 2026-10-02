@@ -471,7 +471,7 @@ namespace {
                 const bool src_flt = is_float(x.src_kind);
                 const bool dst_flt = is_float(x.target_kind);
 
-                if (x.target_kind == ast::TypeKind::String) {
+                if (x.kind == ast::CastKind::Format) {
                     if (is_integer(x.src_kind)) {
                         const int src_sz = cast_type_size(x.src_kind);
                         const std::string ms = (src_sz == 4) ? "dword" : (src_sz == 2) ? "word" : "byte";

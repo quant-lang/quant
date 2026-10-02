@@ -703,7 +703,7 @@ void AArch64ISel::emit_inst(const IRProgram& program, const IRFunction& fn, cons
             const bool src_flt = is_float(x.src_kind);
             const bool dst_flt = is_float(x.target_kind);
 
-            if (x.target_kind == ast::TypeKind::String) {
+            if (x.kind == ast::CastKind::Format) {
                 // int/float -> string: call qk_format_*
                 text.ldr_imm(aarch64::X0, aarch64::X29, temp_offset(x.src, fn));
                 if (is_integer(x.src_kind)) {

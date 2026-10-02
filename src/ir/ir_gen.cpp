@@ -2141,12 +2141,22 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 src_kind = node.value->resolved_type->kind;
             }
 
+            // A value cast to str is a number-to-string conversion: semantic
+            // analysis rejects every other cast to a pointer, so the target
+            // being *char with a numeric source is exactly `number as str`.
+            ast::CastKind kind = node.kind;
+            if (kind == ast::CastKind::ValueCast &&
+                is_str_type(node.target) &&
+                is_numeric_kind(src_kind)) {
+                kind = ast::CastKind::Format;
+            }
+
             emit(IRCast{
                 dst,
                 src,
                 src_kind,
                 node.target->kind,
-                node.kind
+                kind
             });
             return dst;
         },

@@ -41,8 +41,6 @@ namespace quant::ast {
         F32,
         F64,
 
-        String,
-
         Struct,
         Pointer,
         Reference,
@@ -62,6 +60,13 @@ namespace quant::ast {
 
         std::string to_string(CompilerContext& ctx) const;
     };
+
+    // `str` is not a type of its own: it is an alias for *char (*u8), a bare
+    // pointer to NUL-terminated bytes with no length and no capacity
+    inline bool is_str_type(const Type* t) {
+        return t && t->kind == TypeKind::Pointer && t->pointed &&
+               t->pointed->kind == TypeKind::U8;
+    }
 
     // Expressions
 
@@ -146,7 +151,8 @@ namespace quant::ast {
     };
     enum class CastKind {
         ValueCast,   // as
-        Bitcast      // as!
+        Bitcast,     // as!
+        Format       // numeric as str: lowers to a qk_format_* call
     };
     struct CastExpr {
         Expr* value;

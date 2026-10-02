@@ -1,47 +1,95 @@
 load "std::io";
 load "std::string";
-load "std::arena";
 
 using std::string;
 
-void main() {
+// expect - report a failed expectation.
+bool expect(bool cond, str what) {
+    if (cond)
+        return true;
+    std::io::print("BAD ");
+    std::io::print(what);
+    std::io::print("\n");
+    return false;
+}
+
+i32 main() {
     str s = "hello";
 
-    // str_len
-    u64 l = str_len(s);
-    if (l != (5 as u64)) { std::io::print("BAD len\n"); return; }
+    if (!expect(str_len(s) == 5, "len"))
+        return 1;
+    if (!expect(str_eq(s, "hello"), "eq"))
+        return 1;
+    if (!expect(!str_eq(s, "world"), "neq"))
+        return 1;
 
-    // str_eq / str_neq
-    bool eq = str_eq(s, "hello");
-    if (!eq) { std::io::print("BAD eq\n"); return; }
-    bool neq = str_neq(s, "world");
-    if (!neq) { std::io::print("BAD neq\n"); return; }
-    bool same = str_neq(s, "hello");
-    if (same) { std::io::print("BAD neq2\n"); return; }
+    // str is *char, so the bytes are reachable by indexing
+    if (!expect(s[0] == (104 as char), "index"))
+        return 1;
 
-    // str_empty
-    bool e = str_empty(s);
-    if (e) { std::io::print("BAD empty\n"); return; }
-    bool e2 = str_empty("");
-    if (!e2) { std::io::print("BAD empty2\n"); return; }
+    // string_make copies into a heap allocation
+    mut string a = string_make(s);
+    if (!expect(a.len() == 5, "copy len"))
+        return 1;
+    if (!expect(a.data != s, "alias"))
+        return 1;
+    if (!expect(a.data[5] == 0, "term"))
+        return 1;
+    if (!expect(a.eq("hello"), "copy eq"))
+        return 1;
 
-    // str_char_at
-    u8 c = str_char_at(s, 1);
-    if (c != (101 as u8)) { std::io::print("BAD char_at\n"); return; }
+    // push and push_str grow the buffer past the initial capacity
+    a.push_str(" world");
+    a.push(33 as char);
+    if (!expect(a.len() == 12, "push len"))
+        return 1;
+    if (!expect(a.eq("hello world!"), "push eq"))
+        return 1;
+    if (!expect(a.data[12] == 0, "push term"))
+        return 1;
+    if (!expect(a.get(6) == (119 as char), "get"))
+        return 1;
 
-    // Arena-allocated results
-    mut std::arena::Region r = std::arena::_create(1024);
+    // sub clamps the count and yields an empty string for a late start
+    string part = a.sub(6, 5);
+    if (!expect(part.eq("world"), "sub"))
+        return 1;
+    string rest = a.sub(6, 100);
+    if (!expect(rest.len() == 6, "sub clamp"))
+        return 1;
+    string none = a.sub(99, 1);
+    if (!expect(none.is_empty(), "sub range"))
+        return 1;
 
-    str cat = str_concat(&r, s, " world");
-    if (!str_eq(cat, "hello world")) { std::io::print("BAD concat\n"); return; }
+    // concat builds a new string and leaves the receiver alone
+    string cat = a.concat("?");
+    if (!expect(cat.eq("hello world!?"), "concat"))
+        return 1;
+    if (!expect(a.len() == 12, "concat src"))
+        return 1;
 
-    str sub = str_sub(&r, s, 1, 3);
-    if (!str_eq(sub, "ell")) { std::io::print("BAD sub\n"); return; }
+    // an empty string owns no memory
+    string empty = string_make("");
+    if (!expect(empty.is_empty(), "empty"))
+        return 1;
+    if (!expect(empty.len() == 0, "empty len"))
+        return 1;
 
-    str cp = str_copy(&r, s);
-    if (!str_eq(cp, "hello")) { std::io::print("BAD copy\n"); return; }
-    str cp2 = str_copy(&r, cat);
-    if (!str_eq(cp2, "hello world")) { std::io::print("BAD copy2\n"); return; }
+    empty.free();
+    none.free();
+    rest.free();
+    cat.free();
+    part.free();
+    a.free();
 
-    r.destroy();
-    std::io::print("str OK\n");}
+    // free resets the string, so it can be filled again
+    a.push(65 as char);
+    if (!expect(a.eq("A"), "reuse"))
+        return 1;
+    a.free();
+    if (!expect(a.len() == 0, "free len"))
+        return 1;
+
+    std::io::print("string OK\n");
+    return 0;
+}

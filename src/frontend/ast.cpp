@@ -23,9 +23,7 @@ std::string Type::to_string(quant::CompilerContext& ctx) const
     
         case TypeKind::F32:       return "f32";
         case TypeKind::F64:       return "f64";
-    
-        case TypeKind::String:    return "string";
-    
+
         case TypeKind::Struct:
             {
                 std::string base = struct_name;

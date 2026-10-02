@@ -1,0 +1,59 @@
+// str is an alias for *char: both spellings must be interchangeable, and a
+// string literal must fit any *char binding (local, field, parameter).
+
+load "std::io";
+load "std::string";
+
+using std::string;
+
+struct Buf {
+    *char text;
+};
+
+// print_len - a *char parameter accepts a literal and any str value.
+u64 print_len(*char s) {
+    std::io::print(s);
+    return str_len(s);
+}
+
+// twice - str and *char parameters describe the same type.
+*char twice(str s) {
+    return s;
+}
+
+void main() {
+    // The two spellings are the same type.
+    *char a = "10";
+    str b = "10";
+    *char c = b;
+    str d = a;
+    if (!str_eq(c, d)) { std::io::print("BAD interchange\n"); return; }
+
+    // A literal fits a *char binding, a field and a parameter.
+    @init mut Buf buf;
+    buf.text = "hello";
+    if (!str_eq(buf.text, "hello")) { std::io::print("BAD field\n"); return; }
+    if (print_len("qwerty") != (6 as u64)) { std::io::print("BAD param\n"); return; }
+    if (print_len(twice("abc")) != (3 as u64)) { std::io::print("BAD ret\n"); return; }
+
+    // A str pointer is 8 bytes and is a real pointer: it can be indexed,
+    // compared against nullptr and stored in a slice-like position.
+    u64 n = sizeof(str);
+    if (n != (8 as u64)) { std::io::print("BAD sizeof\n"); return; }
+    if (a[0] != (49 as u8)) { std::io::print("BAD index\n"); return; }
+    if ("abc"[1] != (98 as u8)) { std::io::print("BAD literal index\n"); return; }
+
+    *char nil = nullptr;
+    if (nil != nullptr) { std::io::print("BAD nullptr\n"); return; }
+    if (a == nullptr) { std::io::print("BAD cmp\n"); return; }
+
+    // char and *char spell the same thing.
+    char ch = a[0];
+    *char p = a;
+    if (p[0] != ch) { std::io::print("BAD char\n"); return; }
+
+    // Numeric `as str` still produces a formatted string.
+    if (!str_eq(42 as str, "42")) { std::io::print("BAD format\n"); return; }
+
+    std::io::print("str alias OK\n");
+}

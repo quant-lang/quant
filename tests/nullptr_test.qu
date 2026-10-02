@@ -15,36 +15,36 @@ bool check_neq(*i32 p) {
 i32 main() {
     *i32 p = nullptr;
     if (p == nullptr) {
-        std::io::print_char(65 as i8);
+        std::io::print_char('A');
     } else {
-        std::io::print_char(66 as i8);
+        std::io::print_char('B');
     }
     if (p != nullptr) {
-        std::io::print_char(66 as i8);
+        std::io::print_char('B');
     } else {
-        std::io::print_char(65 as i8);
+        std::io::print_char('A');
     }
 
     mut *i32 q = nullptr;
     q = q;
     if (check_ptr(q)) {
-        std::io::print_char(65 as i8);
+        std::io::print_char('A');
     } else {
-        std::io::print_char(66 as i8);
+        std::io::print_char('B');
     }
     if (check_neq(q)) {
-        std::io::print_char(66 as i8);
+        std::io::print_char('B');
     } else {
-        std::io::print_char(65 as i8);
+        std::io::print_char('A');
     }
 
     *void v = returns_null();
     if (v == nullptr) {
-        std::io::print_char(65 as i8);
+        std::io::print_char('A');
     } else {
-        std::io::print_char(66 as i8);
+        std::io::print_char('B');
     }
 
-    std::io::print_char(10 as i8);
+    std::io::print_char('\n');
     return 0;
 }

@@ -42,8 +42,8 @@ struct Region {
         capacity = 0;
     }
 
-    // buf - allocate a zero-filled writable buffer of `size` bytes + NUL.
-    // Returns an empty string if the region is full, so no cast is needed.
+// buf - allocate a zero-filled writable buffer of `size` bytes + NUL.
+    // Returns an empty string if the region is full.
     str buf(u64 size) {
         if (size == 0)
             return "";
@@ -57,7 +57,7 @@ struct Region {
             mem[i] = 0;
             i++;
         }
-        return mem as! str;
+        return mem;
     }
 };
 

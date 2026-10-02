@@ -8,10 +8,10 @@ i32 main() {
     g_counter = 41;
 
     region r {
-        *i8 buf = alloc(i8, 16);
+        str buf = alloc(char, 16);
         mut i32 i = 0;
         while (i < 16) {
-            buf[i] = 65 as i8;
+            buf[i] = 'A';
             i++;
         }
         std::io::print_char(buf[0]);

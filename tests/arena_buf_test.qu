@@ -8,12 +8,12 @@ i32 main() {
     mut std::arena::Region r = std::arena::_create(4096);
 
     mut str buf = r.buf(64);
-    if (!str_empty(buf)) {
+    if (buf[0] != 0) {
         std::io::print("BAD not-empty\n");
         return 1;
     }
 
-    *u8 bytes = buf as! *u8;
+    *u8 bytes = buf;
     bytes[0] = 104 as u8;
     bytes[1] = 105 as u8;
 
@@ -33,7 +33,7 @@ i32 main() {
         return 1;
     }
 
-    if (!str_empty(other)) {
+    if (other[0] != 0) {
         std::io::print("BAD other\n");
         return 1;
     }
@@ -41,7 +41,7 @@ i32 main() {
     mut std::arena::Region tiny = std::arena::_create(32);
     mut str small = tiny.buf(1024);
 
-    if (!str_empty(small)) {
+    if (small[0] != 0) {
         std::io::print("BAD exhausted\n");
         return 1;
     }

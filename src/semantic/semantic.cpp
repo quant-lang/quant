@@ -1791,7 +1791,7 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
             return ctx.types.get_builtin(TypeKind::F64);
         },
         [&](const ast::StringExpr&) -> const ast::Type* {
-            return ctx.types.get_builtin(TypeKind::String);
+            return ctx.types.get_pointer(ctx.types.get_builtin(TypeKind::U8));
         },
         [&](const ast::CharExpr&) -> const ast::Type* {
             return ctx.types.get_builtin(TypeKind::U8);
@@ -1853,7 +1853,7 @@ const ast::Type* SemanticAnalyzer::analyze_int(const ast::IntExpr&) {
 }
 
 const ast::Type* SemanticAnalyzer::analyze_string(const ast::StringExpr&) {
-    return ctx.types.get_builtin(TypeKind::String);
+    return ctx.types.get_pointer(ctx.types.get_builtin(TypeKind::U8));
 }
 
 const ast::Type* SemanticAnalyzer::analyze_var(const ast::VarExpr& var, const ast::Expr* expr) {
@@ -2445,7 +2445,10 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         const ast::Type* size_type = analyze_expr(call.args[0]);
         if (!size_type) return nullptr;
 
-        if (size_type->kind == TypeKind::Void || size_type->kind == TypeKind::String) {
+        if (size_type->kind == TypeKind::Void ||
+            size_type->kind == TypeKind::Pointer ||
+            size_type->kind == TypeKind::Reference ||
+            size_type->kind == TypeKind::NullPtr) {
             ctx.errors.add("alloc argument must be an integer (size in bytes)");
             return nullptr;
         }
@@ -2922,9 +2925,11 @@ const ast::Type* SemanticAnalyzer::analyze_cast(const ast::CastExpr& n){
     target = canonicalize_struct_type(target);
     switch (n.kind) {
         case ast::CastKind::ValueCast:
-            if (target->kind == TypeKind::String) {
+            // str is *char, so "number as str" is a cast to a pointer: it is
+            // the only pointer-producing value cast and lowers to qk_format_*.
+            if (is_str_type(target)) {
                 if (!is_numeric(value_type->kind)) {
-                    ctx.errors.add("as: only numeric types can be converted to string");
+                    ctx.errors.add("as: only numeric types can be converted to str");
                     return nullptr;
                 }
             } else if (!is_numeric(value_type->kind) || !is_numeric(target->kind)) {

@@ -36,7 +36,6 @@ namespace {
         builtin_types[(size_t)TypeKind::F32].kind = TypeKind::F32;
         builtin_types[(size_t)TypeKind::F64].kind = TypeKind::F64;
 
-        builtin_types[(size_t)TypeKind::String].kind = TypeKind::String;
         builtin_types[(size_t)TypeKind::NullPtr].kind = TypeKind::NullPtr;
     }
 

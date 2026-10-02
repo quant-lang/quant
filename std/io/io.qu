@@ -8,7 +8,7 @@
 //   i32 main() {
 //       std::io::print("hello ");
 //       std::io::println("world");
-//       std::io::print_char(65);  // prints 'A'
+//       std::io::print_char('A');
 //
 //       i64 fd = std::io::open("test.txt", 65, 438);
 //       std::io::write(fd, "hello", 5);
@@ -32,11 +32,10 @@ module "std::io";
 @syscall(74) extern i64 sys_fsync(i64 fd);
 @syscall(257) extern i64 sys_openat(i64 dirfd, str path, i64 flags, i64 mode);
 
-// strlen - length of a string (without the terminating \0).
+// strlen - number of bytes in a NUL-terminated string, without the \0.
 i64 strlen(str s) {
-    *i8 p = s as! *i8;
-    mut i32 i = 0;
-    while (p[i] != 0) {
+    mut i64 i = 0;
+    while (s[i] != 0) {
         i++;
     }
     return i;
@@ -50,7 +49,7 @@ void print(str text) {
 // println - print a string followed by a newline to stdout.
 void println(str text) {
     print(text);
-    print_char(10);
+    print_char('\n');
 }
 
 // eprint - print a string to stderr.
@@ -58,13 +57,15 @@ void eprint(str text) {
     sys_write(2, text, strlen(text));
 }
 
-// print_char - print a single byte to stdout.
-struct PutcBuf { i8 c; };
-@init mut PutcBuf g_putc_buf;
+// ByteBuf - single-byte buffer for the read/write syscalls.
+// `&` needs a non-scalar, so a bare `char` variable cannot be passed to them.
+struct ByteBuf { char c; };
+@init mut ByteBuf g_byte_buf;
 
-void print_char(i8 c) {
-    g_putc_buf.c = c;
-    sys_write(1, (&g_putc_buf) as! str, 1);
+// print_char - print a single byte to stdout.
+void print_char(char c) {
+    g_byte_buf.c = c;
+    sys_write(1, (&g_byte_buf) as! str, 1);
 }
 
 // exit - terminate the program with the given exit code.
@@ -122,9 +123,9 @@ i64 read(str buf, i64 len) {
     return r;
 }
 
-// read_char - read a single byte from stdin.
+// read_char - read a single byte from stdin, or -1 at end of input.
 i64 read_char() {
-    i64 n = sys_read(0, (&g_putc_buf) as! str, 1);
+    i64 n = sys_read(0, (&g_byte_buf) as! str, 1);
     if (n <= 0) { return -1; }
-    return g_putc_buf.c;
+    return g_byte_buf.c as i64;
 }

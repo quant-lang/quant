@@ -10,7 +10,7 @@
 //   void main() {
 //       std::io::print("hello ");
 //       std::io::println("world");
-//       std::io::print_char(65 as i8);  // prints 'A'
+//       std::io::print_char('A');
 //       std::io::exit(0);
 //   }
 
@@ -41,11 +41,10 @@ struct IoScratch { i64 v; };
     g_stderr = sys_get_std_handle(-12);
 }
 
-// strlen - get string length (without \0).
+// strlen - number of bytes in a NUL-terminated string, without the \0.
 i64 strlen(str s) {
-    *i8 p = s as! *i8;
-    mut i32 i = 0;
-    while (p[i] != 0) {
+    mut i64 i = 0;
+    while (s[i] != 0) {
         i++;
     }
     return i;
@@ -59,7 +58,7 @@ void print(str text) {
 // println - print string + newline to stdout.
 void println(str text) {
     print(text);
-    print_char(10);
+    print_char('\n');
 }
 
 // eprint - print string to stderr.
@@ -67,13 +66,15 @@ void eprint(str text) {
     sys_write_file(g_stderr, text, strlen(text), (&g_scratch) as! str, 0 as! *void);
 }
 
-// print_char - print one byte to stdout.
-struct PutcBuf { i8 c; };
-@init mut PutcBuf g_putc_buf;
+// ByteBuf - single-byte buffer for the read/write calls.
+// `&` needs a non-scalar, so a bare `char` variable cannot be passed to WinAPI.
+struct ByteBuf { char c; };
+@init mut ByteBuf g_byte_buf;
 
-void print_char(i8 c) {
-    g_putc_buf.c = c;
-    sys_write_file(g_stdout, (&g_putc_buf) as! str, 1, (&g_scratch) as! str, 0 as! *void);
+// print_char - print one byte to stdout.
+void print_char(char c) {
+    g_byte_buf.c = c;
+    sys_write_file(g_stdout, (&g_byte_buf) as! str, 1, (&g_scratch) as! str, 0 as! *void);
 }
 
 // exit - exit program with the given code.
@@ -101,9 +102,9 @@ i64 read(str buf, i64 len) {
 
 // read_char - read one byte from stdin.
 i64 read_char() {
-    sys_read_file(g_stdin, (&g_putc_buf) as! str, 1, (&g_scratch) as! str, 0 as! *void);
+    sys_read_file(g_stdin, (&g_byte_buf) as! str, 1, (&g_scratch) as! str, 0 as! *void);
     if (g_scratch.v <= 0) { return -1; }
-    return g_putc_buf.c;
+    return g_byte_buf.c as i64;
 }
 
 struct FpScratch { i64 v; };

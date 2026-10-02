@@ -598,7 +598,7 @@ void ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRIns
             const bool src_flt = is_float(x.src_kind);
             const bool dst_flt = is_float(x.target_kind);
 
-            if (x.target_kind == ast::TypeKind::String) {
+            if (x.kind == ast::CastKind::Format) {
                 const x86::R64 int_arg_reg =
                     (target_os == mc::TargetOS::Windows) ? x86::RCX : x86::RDI;
                 if (is_integer(x.src_kind)) {
