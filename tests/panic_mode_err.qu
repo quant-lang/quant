@@ -1,0 +1,16 @@
+enum TokenType {
+    PLUS,
+};
+
+enum NodeType {
+    LITERAL,
+}
+
+enum OpType {
+    PLUS,
+};
+
+struct Token {
+    TokenType type;
+};
+

@@ -35,7 +35,8 @@ namespace quant::ps {
 
             void sync();
 
-        private:
+            ErrorBag::ParserException error(const SourceLocation& loc, int length, const std::string& msg);
+
             // core token control
             Token advance();
             bool check(TokenType type);

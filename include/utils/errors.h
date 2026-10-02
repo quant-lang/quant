@@ -17,6 +17,8 @@ class ErrorBag {
     void print_carets(const SourceLocation& loc, int length, const std::string& line);
 
 public:
+    class ParserException : public std::exception {};
+
     void add_source(const std::string& path, SourceFile sf);
 
     void add(const SourceLocation& loc, int length, const std::string& msg);

@@ -194,7 +194,12 @@ std::vector<ast::Stmt*> Parser::parse() {
     std::vector<ast::Stmt*> out;
 
     while (!check(TOKEN_EOF)) {
-        out.push_back(memory::make<ast::Stmt>(ctx.ast_arena, parse_statement()));
+        try {
+            out.push_back(memory::make<ast::Stmt>(ctx.ast_arena, parse_statement()));
+        }
+        catch (const ErrorBag::ParserException&) {
+            sync();
+        }
     }
 
     return out;
@@ -223,6 +228,11 @@ bool Parser::match(TokenType type) {
     return true;
 }
 
+ErrorBag::ParserException Parser::error(const SourceLocation& loc, int length, const std::string& msg) {
+    ctx.errors.add(loc, length, msg);
+    return ErrorBag::ParserException();
+}
+
 void Parser::sync() {
     int nesting = 0;
     while (!check(TOKEN_EOF)) {
@@ -246,27 +256,8 @@ void Parser::sync() {
 }
 
 Token Parser::expect(TokenType type, const char* msg) {
-    if (!check(type)) {
-        ctx.errors.add(current.loc, current.text.length(), msg);
-
-        if (type == TOKEN_LBRACE || type == TOKEN_RBRACE ||
-            type == TOKEN_SEMICOLON || type == TOKEN_RPAREN) {
-            sync();
-            // Don't advance past a closing brace we synced to
-            if ((type == TOKEN_SEMICOLON || type == TOKEN_RPAREN) &&
-                check(TOKEN_RBRACE)) {
-                return current;
-            }
-        }
-
-        Token bad = current;
-        if (!check(TOKEN_EOF)) {
-            advance();
-        }
-        return bad;
-    }
-
-    return advance();
+    if (check(type)) return advance();
+    throw error(current.loc, current.text.length(), msg);
 }
 
 Token Parser::peek(int n) {
@@ -547,7 +538,7 @@ ast::StructDecl Parser::parse_struct_decl() {
                 break;
             }
             case quant::ps::DeclKind::None:
-                ctx.errors.add(current.loc, current.text.length(), "Unexpected Declaration");
+                error(current.loc, current.text.length(), "Unexpected Declaration");
                 advance();
                 break;
         }
@@ -726,12 +717,12 @@ if (match(TOKEN_CASE)) {
             ret.cases.push_back(std::move(cs));
         } else if (match(TOKEN_DEFAULT)) {
             if (ret.default_block) {
-                ctx.errors.add(previous.loc, previous.text.length(), "Multiple 'default' blocks in switch");
+                error(previous.loc, previous.text.length(), "Multiple 'default' blocks in switch");
             }
             expect(TOKEN_COLON, "Expected ':' after default");
             ret.default_block = parse_statement_body();
         } else {
-            ctx.errors.add(current.loc, current.text.length(), "Expected 'case' or 'default' in switch body");
+            error(current.loc, current.text.length(), "Expected 'case' or 'default' in switch body");
             while (!check(TOKEN_EOF) && !check(TOKEN_CASE) &&
                    !check(TOKEN_DEFAULT) && !check(TOKEN_RBRACE)) {
                 advance();
@@ -904,12 +895,7 @@ ast::Block* Parser::parse_statement_body() {
 }
 
 ast::Block* Parser::parse_block() {
-    if (!check(TOKEN_LBRACE)) {
-        ctx.errors.add(current.loc, current.text.length(), "Expected '{'");
-        auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
-        return block;
-    }
-    advance();
+    expect(TOKEN_LBRACE, "Expected '{'");
 
     auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
 
@@ -919,11 +905,7 @@ ast::Block* Parser::parse_block() {
         );
     }
 
-    if (!check(TOKEN_RBRACE)) {
-        ctx.errors.add(current.loc, current.text.length(), "Expected '}'");
-        return block;
-    }
-    advance();
+    expect(TOKEN_RBRACE, "Expected '}'");
 
     return block;
 }
@@ -974,7 +956,7 @@ ast::Expr* Parser::parse_expr(int min_prec) {
             if (!std::holds_alternative<ast::VarExpr>(left->kind) &&
                 !std::holds_alternative<ast::FieldExpr>(left->kind) &&
                 !std::holds_alternative<ast::IndexExpr>(left->kind)) {
-                ctx.errors.add(op.loc, op.text.length(), "Invalid assignment target");
+                error(op.loc, op.text.length(), "Invalid assignment target");
                 (void)parse_expr(prec);
                 return left;
             }
@@ -1117,7 +1099,7 @@ ast::Expr* Parser::parse_prefix() {
         return make_expr(ctx, ast::StructInitExpr{ nullptr, {}, init_args }, previous.loc);
     }
 
-    ctx.errors.add(current.loc, current.text.length(), "Unexpected token");
+    error(current.loc, current.text.length(), "Unexpected token");
     if (!check(TOKEN_EOF)) {
         advance();
     }
@@ -1215,7 +1197,7 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
             if (!std::holds_alternative<ast::VarExpr>(left->kind) &&
                 !std::holds_alternative<ast::FieldExpr>(left->kind) &&
                 !std::holds_alternative<ast::IndexExpr>(left->kind)) {
-                ctx.errors.add(op.loc, op.text.length(), "Invalid increment/decrement target");
+                error(op.loc, op.text.length(), "Invalid increment/decrement target");
                 return left;
             }
 
@@ -1235,7 +1217,7 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
             const ast::Type* target = parse_type(false, current_type_params);
 
             if (!target) {
-                ctx.errors.add(current.loc, current.text.length(), "Expected type after cast");
+                error(current.loc, current.text.length(), "Expected type after cast");
                 return left;
             }
 
@@ -1337,7 +1319,7 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
         return ctx.types.get_builtin(TypeKind::Void);
     }
 
-    ctx.errors.add(current.loc, current.text.length(), "Expected type");
+    error(current.loc, current.text.length(), "Expected type");
     return nullptr;
 }
 } // namespace quant::ps
