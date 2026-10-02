@@ -5,7 +5,7 @@ Style rules for Quant (`.qu`) code. This document covers code style, not languag
 ## Naming
 
 * Functions and variables use `snake_case`.
-* Types use `PascalCase`.
+* Types use `PascalCase`. (stdlib types may be called with `snake_case`)
 * Compiler enum variants use `SCREAMING_SNAKE_CASE`.
 * Boolean names should read as predicates: `is_mut`, `has_body`, `is_comptime`.
 * Use common short names when context is obvious: `p`, `t`, `n`, `i` 
