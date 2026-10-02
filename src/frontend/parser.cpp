@@ -507,40 +507,45 @@ ast::StructDecl Parser::parse_struct_decl() {
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
         std::vector<ast::Attribute> member_attrs = parse_attributes();
 
-        switch (declaration_kind()) {
-            case DeclKind::Var: {
-                ast::StructField field;
+        try {
+            switch (declaration_kind()) {
+                case DeclKind::Var: {
+                    ast::StructField field;
 
-                field.attributes = std::move(member_attrs);
-                field.is_mut = match(TOKEN_MUT);
-                field.is_private = is_priv(field.attributes);
+                    field.attributes = std::move(member_attrs);
+                    field.is_mut = match(TOKEN_MUT);
+                    field.is_private = is_priv(field.attributes);
 
-                field.type = parse_type(false, &ret.type_params);
+                    field.type = parse_type(false, &ret.type_params);
 
-                Token field_name = expect(TOKEN_IDENT, "Expected field name");
-                field.name = field_name.text;
+                    Token field_name = expect(TOKEN_IDENT, "Expected field name");
+                    field.name = field_name.text;
 
-                field.default_value = nullptr;
-                if (match(TOKEN_EQ)) {
-                    field.default_value = parse_expr(0);
+                    field.default_value = nullptr;
+                    if (match(TOKEN_EQ)) {
+                        field.default_value = parse_expr(0);
+                    }
+
+                    expect(TOKEN_SEMICOLON, "Expected ';' after field");
+
+                    ret.fields.push_back(std::move(field));
+                    break;
                 }
-
-                expect(TOKEN_SEMICOLON, "Expected ';' after field");
-
-                ret.fields.push_back(std::move(field));
-                break;
+                case DeclKind::Func: {
+                    ast::FuncStmt fn = parse_func(false, struct_name->c_str(), &ret.type_params);
+                    fn.attributes = std::move(member_attrs);
+                    fn.is_private = is_priv(fn.attributes);
+                    ret.fields.push_back(std::move(fn));
+                    break;
+                }
+                case quant::ps::DeclKind::None:
+                    error(current.loc, current.text.length(), "Unexpected Declaration");
+                    advance();
+                    break;
             }
-            case DeclKind::Func: {
-                ast::FuncStmt fn = parse_func(false, struct_name->c_str(), &ret.type_params);
-                fn.attributes = std::move(member_attrs);
-                fn.is_private = is_priv(fn.attributes);
-                ret.fields.push_back(std::move(fn));
-                break;
-            }
-            case quant::ps::DeclKind::None:
-                error(current.loc, current.text.length(), "Unexpected Declaration");
-                advance();
-                break;
+        }
+        catch (const ErrorBag::ParserException&) {
+            sync();
         }
     }
 
