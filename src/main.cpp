@@ -4,6 +4,17 @@
 #include <fstream>
 #include <cstdlib>
 
+#ifndef QUANT_USE_LIBQU
+#define QUANT_USE_LIBQU 0
+#endif
+
+#if QUANT_USE_LIBQU
+#include <cstdint>
+#include <sstream>
+#include <unistd.h>
+#include "quant_libqu_embedded.h"
+#endif
+
 #include "quant/frontend/lexer.h"
 #include "quant/frontend/parser.h"
 #include "quant/semantic/semantic.h"
@@ -19,6 +30,63 @@
 
 #include "quant/modules/module.h"
 #include "quant/linker/linker.h"
+
+#if QUANT_USE_LIBQU
+namespace {
+
+// Content-addressed file name: builds embedding the same stdlib share one
+// archive in the temp dir, and a changed stdlib gets a different name.
+std::string libqu_cache_name(const quant::embedded_libqu::Archive& archive) {
+    std::uint64_t hash = 1469598103934665603ull; // FNV-1a
+    for (std::uint64_t i = 0; i < archive.size; ++i) {
+        hash ^= archive.data[i];
+        hash *= 1099511628211ull;
+    }
+    std::ostringstream name;
+    name << "libqu-" << archive.target << "-" << std::hex << hash << ".a";
+    return name.str();
+}
+
+// Drop the embedded archive into the temp dir so ld can read it. Returns the
+// path in `out_path`.
+bool unpack_libqu(const quant::embedded_libqu::Archive& archive, std::filesystem::path& out_path, std::string& error) {
+    out_path = std::filesystem::temp_directory_path() / libqu_cache_name(archive);
+
+    std::error_code ec;
+    const std::uintmax_t expected = archive.size;
+    if (std::filesystem::exists(out_path, ec) &&
+        std::filesystem::file_size(out_path, ec) == expected) {
+        return true;
+    }
+
+    // Write to a private name first: parallel qu processes then either see the
+    // finished archive or rename an identical one over it, never a partial one.
+    std::filesystem::path partial = out_path;
+    partial += "." + std::to_string(::getpid()) + ".tmp";
+
+    std::ofstream file(partial, std::ios::binary | std::ios::trunc);
+    if (!file) {
+        error = "cannot create " + partial.string();
+        return false;
+    }
+    file.write(reinterpret_cast<const char*>(archive.data),
+               static_cast<std::streamsize>(archive.size));
+    if (!file) {
+        error = "cannot write " + partial.string();
+        return false;
+    }
+    file.close();
+
+    std::filesystem::rename(partial, out_path, ec);
+    if (ec) {
+        error = "cannot install " + out_path.string() + ": " + ec.message();
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+#endif // QUANT_USE_LIBQU
 
 int main(int argc, char **argv)
 {
@@ -45,11 +113,30 @@ int main(int argc, char **argv)
             }
         }
 
-        // Auto-detect pre-compiled static stdlib (.a) for Linux targets.
-        // Searches for lib/qu-<arch>-<os>.a next to the compiler binary,
-        // then in the parent directory (covers build layout where root_path
-        // stays at build/bin/ but .a lives in build/lib/).
+        // QUANT_USE_LIBQU: the prebuilt stdlib archive is part of this binary.
+        // Unpack it and link against it instead of regenerating stdlib code
+        // from the embedded sources on every run.
+#if QUANT_USE_LIBQU
         if (opts.target_os == quant::codegen::mc::TargetOS::Linux && !opts.static_lib) {
+            for (const auto& archive : quant::embedded_libqu::archives()) {
+                if (archive.target != opts.target_name) continue;
+
+                std::string error;
+                if (!unpack_libqu(archive, ctx.static_std_path, error)) {
+                    utils::logger::error("failed to unpack embedded stdlib: " + error);
+                    return 1;
+                }
+                ctx.use_static_std = true;
+                break;
+            }
+        }
+#endif
+
+        // Builds without an embedded archive fall back to a pre-compiled
+        // stdlib (.a) shipped next to the binary: lib/qu-<arch>-<os>.a, then
+        // the same name in the parent directory (build layout).
+        if (!ctx.use_static_std &&
+            opts.target_os == quant::codegen::mc::TargetOS::Linux && !opts.static_lib) {
             const char* arch_str = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
                 ? "aarch64" : "x86_64";
             auto lib_name = std::string("libqu-") + arch_str + "-linux.a";

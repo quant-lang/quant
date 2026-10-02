@@ -23,7 +23,9 @@ def main():
 
     qu = os.environ.get("QU")
     if not qu:
-        qu = os.path.join(repo_root, "build", "bin", "qu.exe" if os.name == "nt" else "qu")
+        qu = os.path.join(
+            repo_root, "build", "bin", "qu.exe" if os.name == "nt" else "qu"
+        )
         if not os.path.isfile(qu):
             # Try Windows-style path (e.g. running from WSL)
             alt = os.path.join(repo_root, "build", "bin", "qu.exe")

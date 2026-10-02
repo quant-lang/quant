@@ -1,55 +1,69 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(Quant VERSION 0.42 LANGUAGES CXX)
+
 include(FetchContent)
 
-# Build type default
+# ---------------------------------------------------------------------------
+# Build configuration
+# ---------------------------------------------------------------------------
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
         "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
 endif()
 
-# C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Output all binaries into one place, easier for scripts/CI to find qu
+# One place for every produced binary/library, so scripts and CI find them.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-# Project-wide options
 option(QUANT_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(QUANT_ENABLE_LTO "Enable interprocedural optimization in Release builds" ON)
 option(QUANT_ENABLE_ASAN "Enable AddressSanitizer/UBSan in Debug builds" OFF)
 option(QUANT_ENABLE_TESTS "Build tests" OFF)
 option(QUANT_ENABLE_BENCH "Build the IR optimizer benchmark (quant_bench)" ON)
+option(QUANT_USE_LIBQU
+       "Embed a prebuilt stdlib (libqu-<arch>-linux.a) into the compiler instead of \
+regenerating stdlib code on every run (Linux only)" OFF)
+set(QUANT_LD "" CACHE STRING
+    "Linker for the libqu build: ld, ld.lld, mold, or a path (empty: pick by target)")
+set(QUANT_AR "" CACHE STRING
+    "Archiver for the libqu build: ar, llvm-ar, or a path (empty: ar)")
 
-# Backends compiled into the compiler binary. CMake answers
-# "what targets can this compiler build for?"; --target then picks one of the
-# enabled entries at compile time (see src/backend/targets.cpp).
+# ---------------------------------------------------------------------------
+# Backends and targets
+#
+# QUANT_BACKENDS lists what the compiler can emit; only those code generators
+# are compiled in. --target then picks one of them at runtime (targets.cpp).
+# ---------------------------------------------------------------------------
+
 set(QUANT_KNOWN_BACKENDS "x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint")
+
 if(NOT DEFINED QUANT_BACKENDS OR QUANT_BACKENDS STREQUAL "")
-  # The compiler is host-independent: every build can emit any target that
-  # was compiled in. Enable all known backends by default.
   set(QUANT_BACKENDS "${QUANT_KNOWN_BACKENDS}")
 endif()
-foreach(_backend ${QUANT_BACKENDS})
+
+foreach(_backend IN LISTS QUANT_BACKENDS)
   if(NOT _backend IN_LIST QUANT_KNOWN_BACKENDS)
     message(FATAL_ERROR
       "Unknown backend '${_backend}' in QUANT_BACKENDS. Known backends: ${QUANT_KNOWN_BACKENDS}")
   endif()
 endforeach()
+
 message(STATUS "Quant backends: ${QUANT_BACKENDS}")
 
-# Optional default target used when no --target is given on the command line.
-# By default the compiler picks its host-native backend; set this for
-# cross-compilation-oriented builds (e.g. a ZeroPoint-only compiler).
+# Default target for command lines without --target. Set this for builds whose
+# host backend is not compiled in (e.g. a ZeroPoint-only compiler).
 set(QUANT_DEFAULT_TARGET "" CACHE STRING
     "Default --target when none is passed (must be one of QUANT_BACKENDS)")
+
 if(QUANT_DEFAULT_TARGET)
   if(NOT QUANT_DEFAULT_TARGET IN_LIST QUANT_KNOWN_BACKENDS)
     message(FATAL_ERROR
@@ -61,26 +75,47 @@ if(QUANT_DEFAULT_TARGET)
   endif()
 endif()
 
-# Derive feature flags from the backend list: only the selected architectures
-# and executable flavors are compiled into the binary at all.
+# Compile-time feature flags derived from the backend list.
 set(QUANT_HAS_X86_64 OFF)
 set(QUANT_HAS_AARCH64 OFF)
 set(QUANT_HAS_PE OFF)
 set(QUANT_HAS_ELF OFF)
-foreach(_backend ${QUANT_BACKENDS})
+set(QUANT_LINUX_TARGETS "")
+
+foreach(_backend IN LISTS QUANT_BACKENDS)
   if(_backend MATCHES "^x86_64")
     set(QUANT_HAS_X86_64 ON)
   elseif(_backend MATCHES "^aarch64")
     set(QUANT_HAS_AARCH64 ON)
   endif()
+
   if(_backend MATCHES "-windows$")
     set(QUANT_HAS_PE ON)
   else()
     set(QUANT_HAS_ELF ON)
   endif()
+
+  if(_backend MATCHES "-linux$")
+    list(APPEND QUANT_LINUX_TARGETS ${_backend})
+  endif()
 endforeach()
 
-# Compiler warnings / flags, branched per compiler
+if(QUANT_USE_LIBQU)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR
+      "QUANT_USE_LIBQU builds the stdlib with a host compiler binary, so it needs a Linux host")
+  endif()
+  if(NOT QUANT_LINUX_TARGETS)
+    message(FATAL_ERROR
+      "QUANT_USE_LIBQU needs at least one *-linux backend in QUANT_BACKENDS (got ${QUANT_BACKENDS})")
+  endif()
+  message(STATUS "Quant stdlib archives: ${QUANT_LINUX_TARGETS}")
+endif()
+
+# ---------------------------------------------------------------------------
+# Compiler flags
+# ---------------------------------------------------------------------------
+
 add_library(quant_compiler_flags INTERFACE)
 
 if(MSVC)
@@ -122,7 +157,6 @@ elseif(WIN32)
   string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--stack=16777216")
 endif()
 
-# LTO only for optimized configs, and only if the toolchain actually supports it
 if(QUANT_ENABLE_LTO)
   include(CheckIPOSupported)
   check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
@@ -134,33 +168,40 @@ if(QUANT_ENABLE_LTO)
   endif()
 endif()
 
-# Embed the stdlib (.qu sources) into the compiler binary.
-set(STD_EMBED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/quant_std_embedded.h")
-file(GLOB_RECURSE STD_QU_FILES CONFIGURE_DEPENDS
+# ---------------------------------------------------------------------------
+# Embedded stdlib sources (always compiled in)
+#
+# The .qu sources are needed at runtime for parsing and semantic analysis even
+# when the machine code comes from a prebuilt archive (QUANT_USE_LIBQU).
+# ---------------------------------------------------------------------------
+
+file(GLOB_RECURSE QUANT_STD_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/std/*.qu")
 
+set(QUANT_STD_EMBED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/quant_std_embedded.h")
+
 add_custom_command(
-    OUTPUT "${STD_EMBED_HEADER}"
+    OUTPUT "${QUANT_STD_EMBED_HEADER}"
     COMMAND ${CMAKE_COMMAND}
         -DQUANT_STD_DIR=${CMAKE_CURRENT_SOURCE_DIR}/std
-        -DOUTPUT_HEADER=${STD_EMBED_HEADER}
+        -DOUTPUT_HEADER=${QUANT_STD_EMBED_HEADER}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_std.cmake
-    DEPENDS ${STD_QU_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_std.cmake
-    COMMENT "Embedding stdlib into the compiler"
+    DEPENDS ${QUANT_STD_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_std.cmake
+    COMMENT "Embedding stdlib sources into the compiler"
     VERBATIM
 )
 
-# Explicit target so other targets can depend on it without pulling the header
-# into a sources list (cleaner separation, avoids surprises with IDE file lists).
-add_custom_target(quant_std_embed DEPENDS "${STD_EMBED_HEADER}")
+add_custom_target(quant_std_embed DEPENDS "${QUANT_STD_EMBED_HEADER}")
 
-# Library libquant (C++ files).
-# Backend sources are compiled in only when a backend that needs them is
-# enabled: an x86_64-only build contains no AArch64 codegen and no PE writer.
+# ---------------------------------------------------------------------------
+# libquant: the compiler itself (C++)
+# ---------------------------------------------------------------------------
+
 set(QUANT_BACKEND_SOURCES
     src/backend/native_backend.cpp
     src/backend/targets.cpp
 )
+
 if(QUANT_HAS_X86_64)
   list(APPEND QUANT_BACKEND_SOURCES src/backend/isel.cpp src/backend/x86_64.cpp)
 endif()
@@ -204,7 +245,6 @@ set_target_properties(libquant PROPERTIES
 
 target_link_libraries(libquant PUBLIC quant_compiler_flags)
 
-# Dependencies
 FetchContent_Declare(arena-alloc
     GIT_REPOSITORY https://github.com/grafmorkov/quant-alloc.git
     GIT_TAG        v1.0.2
@@ -213,7 +253,7 @@ FetchContent_Declare(arena-alloc
 FetchContent_MakeAvailable(arena-alloc)
 
 add_library(quant-alloc INTERFACE)
-# SYSTEM keeps third-party headers from triggering your -Wall/-Wextra/-Wpedantic
+# SYSTEM keeps third-party headers out of our -Wall/-Wextra/-Wpedantic.
 target_include_directories(quant-alloc SYSTEM INTERFACE ${arena-alloc_SOURCE_DIR})
 
 target_include_directories(libquant
@@ -225,51 +265,111 @@ target_include_directories(libquant
 target_compile_definitions(libquant PUBLIC
     QUANT_ROOT="${PROJECT_SOURCE_DIR}"
 )
-# QUANT_BACKENDS is a CMake list (semicolons); pass it to C++ as a
-# comma-separated string literal so no escaping survives the command line.
+
+# QUANT_BACKENDS is a CMake list (semicolons); pass it as a comma-separated
+# string literal so no escaping survives the command line.
 list(JOIN QUANT_BACKENDS "," QUANT_BACKENDS_CSV)
-set(QUANT_BACKEND_DEFINES
-    "QUANT_ENABLED_BACKENDS=\"${QUANT_BACKENDS_CSV}\""
-)
-if(QUANT_HAS_X86_64)
-  list(APPEND QUANT_BACKEND_DEFINES QUANT_HAS_X86_64)
-endif()
-if(QUANT_HAS_AARCH64)
-  list(APPEND QUANT_BACKEND_DEFINES QUANT_HAS_AARCH64)
-endif()
-if(QUANT_HAS_ELF)
-  list(APPEND QUANT_BACKEND_DEFINES QUANT_HAS_ELF)
-endif()
-if(QUANT_HAS_PE)
-  list(APPEND QUANT_BACKEND_DEFINES QUANT_HAS_PE)
-endif()
+set(QUANT_BACKEND_DEFINES "QUANT_ENABLED_BACKENDS=\"${QUANT_BACKENDS_CSV}\"")
+
+foreach(_flag QUANT_HAS_X86_64 QUANT_HAS_AARCH64 QUANT_HAS_ELF QUANT_HAS_PE)
+  if(${_flag})
+    list(APPEND QUANT_BACKEND_DEFINES ${_flag})
+  endif()
+endforeach()
+
 if(QUANT_DEFAULT_TARGET)
   list(APPEND QUANT_BACKEND_DEFINES "QUANT_DEFAULT_TARGET=\"${QUANT_DEFAULT_TARGET}\"")
 endif()
+
 target_compile_definitions(libquant PUBLIC ${QUANT_BACKEND_DEFINES})
 target_link_libraries(libquant PUBLIC quant-alloc)
 
-# Executable qu (main.cpp)
-add_executable(qu
-    src/main.cpp
-)
-target_link_libraries(qu
-    PRIVATE libquant quant_compiler_flags
-)
+# ---------------------------------------------------------------------------
+# Executables
+# ---------------------------------------------------------------------------
 
-# IR optimizer benchmark (benchmark.cpp): times optimize() per level
+add_executable(qu src/main.cpp)
+target_link_libraries(qu PRIVATE libquant quant_compiler_flags)
+
+# QUANT_USE_LIBQU: build std/std.qu into one archive per Linux target with a
+# bootstrap compiler (this very source tree, sources embedded), then embed the
+# archives into qu. qu still embeds the .qu sources for semantic analysis, but
+# links stdlib machine code from the archive instead of regenerating it.
+if(QUANT_USE_LIBQU)
+  add_executable(qu_bootstrap src/main.cpp)
+  target_link_libraries(qu_bootstrap PRIVATE libquant quant_compiler_flags)
+  set_target_properties(qu_bootstrap PROPERTIES OUTPUT_NAME qu-bootstrap)
+
+  set(QUANT_LIBQU_ARCHIVES "")
+  set(QUANT_LIBQU_SPEC "")
+
+  foreach(_target IN LISTS QUANT_LINUX_TARGETS)
+    string(REGEX REPLACE "-linux$" "" _arch "${_target}")
+    set(_archive "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}/libqu-${_arch}-linux.a")
+
+    set(_build_cmd $<TARGET_FILE:qu_bootstrap>
+        --static-lib ${CMAKE_CURRENT_SOURCE_DIR}/std/std.qu
+        -o ${_archive} --target ${_target})
+    if(QUANT_LD)
+      list(APPEND _build_cmd --ld ${QUANT_LD})
+    endif()
+    if(QUANT_AR)
+      list(APPEND _build_cmd --ar ${QUANT_AR})
+    endif()
+
+    add_custom_command(
+        OUTPUT ${_archive}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}
+        COMMAND ${_build_cmd}
+        DEPENDS qu_bootstrap
+        COMMENT "Building stdlib libqu-${_arch}-linux.a (${_target})"
+        VERBATIM
+    )
+
+    list(APPEND QUANT_LIBQU_ARCHIVES ${_archive})
+    if(QUANT_LIBQU_SPEC)
+      string(APPEND QUANT_LIBQU_SPEC "|")
+    endif()
+    string(APPEND QUANT_LIBQU_SPEC "${_target}=${_archive}")
+  endforeach()
+
+  set(QUANT_LIBQU_EMBED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/quant_libqu_embedded.h")
+
+  add_custom_command(
+      OUTPUT "${QUANT_LIBQU_EMBED_HEADER}"
+      COMMAND ${CMAKE_COMMAND}
+          -DQUANT_LIBQU_SPEC=${QUANT_LIBQU_SPEC}
+          -DOUTPUT_HEADER=${QUANT_LIBQU_EMBED_HEADER}
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_lib.cmake
+      DEPENDS ${QUANT_LIBQU_ARCHIVES} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_lib.cmake
+      COMMENT "Embedding stdlib archives into the compiler"
+      VERBATIM
+  )
+
+  add_custom_target(quant_libqu
+      DEPENDS ${QUANT_LIBQU_ARCHIVES} "${QUANT_LIBQU_EMBED_HEADER}")
+
+  add_dependencies(qu quant_libqu)
+  target_compile_definitions(qu PRIVATE QUANT_USE_LIBQU=1)
+endif()
+
 if(QUANT_ENABLE_BENCH)
   add_executable(quant_bench benchmark.cpp)
   target_link_libraries(quant_bench PRIVATE libquant quant_compiler_flags)
 endif()
 
-# Install rules
+# ---------------------------------------------------------------------------
+# Install and tests
+# ---------------------------------------------------------------------------
+
 include(GNUInstallDirs)
 install(TARGETS qu
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+if(QUANT_USE_LIBQU)
+  install(FILES ${QUANT_LIBQU_ARCHIVES} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
 
-# Tests (optional)
 if(QUANT_ENABLE_TESTS)
   enable_testing()
   add_subdirectory(tests)

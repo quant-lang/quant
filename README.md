@@ -88,6 +88,23 @@ cmake -B build
 cmake --build build
 ```
 
+### Prebuilt stdlib (`libqu`)
+
+On Linux, `-DQUANT_USE_LIBQU=ON` builds `std/std.qu` into one
+`libqu-<arch>-linux.a` per enabled Linux backend (using a bootstrap compiler
+built from the same sources) and embeds those archives into `qu`. At runtime
+the compiler unpacks the archive for the selected `--target` into the temp dir
+and links against it, instead of regenerating stdlib code on every run. The
+`.qu` sources stay embedded for parsing and semantic analysis.
+
+```bash
+cmake -B build -DQUANT_USE_LIBQU=ON
+cmake --build build
+
+# optional: pick the linker/archiver used while building the archives
+cmake -B build -DQUANT_USE_LIBQU=ON -DQUANT_LD=lld -DQUANT_AR=llvm-ar
+```
+
 ---
 
 ## Usage
