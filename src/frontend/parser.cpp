@@ -236,7 +236,7 @@ ErrorBag::ParserException Parser::error(const SourceLocation& loc, int length, c
 void Parser::sync() {
     int nesting = 0;
     while (!check(TOKEN_EOF)) {
-        if (check(TOKEN_SEMICOLON) && nesting == 0) return;
+        if (previous.type == TOKEN_SEMICOLON && nesting == 0) return;
         if (check(TOKEN_RBRACE)) {
             if (nesting == 0) return;
             nesting--;
@@ -876,18 +876,11 @@ ast::NamespaceStmt Parser::parse_namespace_stmt() {
 // Parse a statement; if it's a single statement not wrapped in braces
 // (e.g. if (x) return 1;), the statement itself is the body
 ast::Block* Parser::parse_statement_body() {
-    auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
     if (check(TOKEN_LBRACE)) {
-        advance();
-        while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
-            block->stmts.push_back(
-                memory::make<ast::Stmt>(ctx.ast_arena, parse_statement())
-            );
-        }
-        expect(TOKEN_RBRACE, "Expected '}'");
-        return block;
+        return parse_block();
     }
 
+    auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
     block->stmts.push_back(
         memory::make<ast::Stmt>(ctx.ast_arena, parse_statement())
     );
@@ -900,9 +893,14 @@ ast::Block* Parser::parse_block() {
     auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
 
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
-        block->stmts.push_back(
-            memory::make<ast::Stmt>(ctx.ast_arena, parse_statement())
-        );
+        try {
+            block->stmts.push_back(
+                memory::make<ast::Stmt>(ctx.ast_arena, parse_statement())
+            );
+        }
+        catch (const ErrorBag::ParserException&) {
+            sync();
+        }
     }
 
     expect(TOKEN_RBRACE, "Expected '}'");
@@ -1099,11 +1097,11 @@ ast::Expr* Parser::parse_prefix() {
         return make_expr(ctx, ast::StructInitExpr{ nullptr, {}, init_args }, previous.loc);
     }
 
-    error(current.loc, current.text.length(), "Unexpected token");
+    auto e = error(current.loc, current.text.length(), "Unexpected token");
     if (!check(TOKEN_EOF)) {
         advance();
     }
-    return nullptr;
+    throw e;
 }
 
 ast::Expr* Parser::parse_postfix(ast::Expr* left) {
