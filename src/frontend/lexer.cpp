@@ -9,7 +9,7 @@
 #include "quant/frontend/token.h"
 
 constexpr unsigned int str_hash(const char* str, int h = 0){
-        return !str[h] ? 5381 : (str_hash(str, h + 1) * 33) ^ str[h];
+    return !str[h] ? 5381 : (str_hash(str, h + 1) * 33) ^ str[h];
 }
 
 namespace quant::lx {

@@ -18,7 +18,6 @@ namespace utils::options {
 
     struct Options {
         bool emit_ir = false;
-        bool emit_asm = false;
         bool no_compile = false;
         bool time = false;
         std::string input_file;
@@ -43,7 +42,6 @@ namespace utils::options {
 
     enum class Flag {
         EmitIR,
-        EmitAsm,
         NoCompile,
         Time,
         CompileOnly,

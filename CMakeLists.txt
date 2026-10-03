@@ -227,7 +227,6 @@ add_library(libquant
     src/ir/opt.cpp
     src/modules/modules.cpp
     ${QUANT_BACKEND_SOURCES}
-    src/backend/fasmcodegen.cpp
     src/utils/file_manager.cpp
     src/utils/options.cpp
     src/utils/errors.cpp

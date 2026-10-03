@@ -28,7 +28,6 @@ namespace utils::options{
 
         	std::unordered_map<std::string, Flag> flag_map = {
             	{"--emit-ir", Flag::EmitIR},
-            	{"--emit-asm", Flag::EmitAsm},
             	{"--no-compile", Flag::NoCompile},
             	{"--time", Flag::Time},
                 {"-c", Flag::CompileOnly},
@@ -101,7 +100,6 @@ namespace utils::options{
             if (it != flag_map.end()) {
                 switch (it->second) {
                     case Flag::EmitIR: opts.emit_ir = true; break;
-                    case Flag::EmitAsm: opts.emit_asm = true; break;
                     case Flag::NoCompile: opts.no_compile = true; break;
                     case Flag::Time: opts.time = true; break;
                     case Flag::CompileOnly: opts.compile_only = true; break;

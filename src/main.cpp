@@ -25,7 +25,6 @@
 
 #include "quant/ir/ir_gen.h"
 #include "quant/ir/opt.h"
-#include "quant/backend/fasmcodegen.h"
 #include "quant/backend/native_backend.h"
 
 #include "quant/modules/module.h"
@@ -225,14 +224,6 @@ int main(int argc, char **argv)
         if(opts.no_compile){
             return 0;
         }
-        // Codegen
-        if (opts.emit_asm) {
-            quant::codegen::FasmCodeGenerator fasmCodegen;
-            fasmCodegen.target_os = opts.target_os;
-            std::string asm_code = fasmCodegen.generate(irgen.program);
-            utils::logger::info("asm:");
-            utils::logger::info(asm_code);
-        }
         // Build
         std::filesystem::path exe_path = "out";
 
@@ -245,8 +236,7 @@ int main(int argc, char **argv)
             std::filesystem::create_directories(exe_path.parent_path(), ec);
         }
 
-        auto write_output = [](const std::filesystem::path& path,
-                               const std::vector<uint8_t>& bytes) {
+        auto write_output = [](const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
             std::ofstream file(path, std::ios::binary);
             file.write(
                 reinterpret_cast<const char*>(bytes.data()),
