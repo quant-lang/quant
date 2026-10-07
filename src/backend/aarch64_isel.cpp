@@ -103,45 +103,6 @@ aarch64::Cond float_cmp_op_to_cond(IRBinaryOp op) {
 
 // Naming
 
-std::string AArch64ISel::asm_mangle(std::string name) {
-    for (char& ch : name) {
-        const unsigned char c = static_cast<unsigned char>(ch);
-        if (!(std::isalnum(c) || ch == '_')) ch = '_';
-    }
-    return name;
-}
-
-std::string AArch64ISel::function_name(const IRFunction& fn) {
-    if (!fn.export_name.empty()) return fn.export_name;
-    return "qk_" + asm_mangle(fn.name);
-}
-
-std::string AArch64ISel::abi_name(const IRFunction& fn) {
-    if (fn.is_extern) return "qk_" + asm_mangle(fn.name);
-    return function_name(fn);
-}
-
-std::string AArch64ISel::string_label(uint32_t id) {
-    return "str_" + std::to_string(id);
-}
-
-std::string AArch64ISel::global_label(uint32_t id) {
-    return "gbl_" + std::to_string(id);
-}
-
-std::size_t AArch64ISel::align16(std::size_t n) {
-    return (n + 15u) & ~std::size_t(15u);
-}
-
-const IRFunction* AArch64ISel::find_entry(const IRProgram& program) {
-    const IRFunction* fallback = nullptr;
-    for (const auto& fn : program.functions) {
-        if (fn.is_entry) return &fn;
-        if (fn.name.ends_with("main")) fallback = &fn;
-    }
-    return fallback;
-}
-
 // Stack frame layout (AAPCS64)
 //
 // Frame pointer (X29) points to:
@@ -167,47 +128,6 @@ int64_t AArch64ISel::temp_offset(Reg r, const IRFunction& fn) {
 }
 
 // Symbols
-
-uint32_t AArch64ISel::ensure_symbol(const std::string& name, mc::SymBind bind,
-                                     mc::SymType type, bool undefined,
-                                     uint32_t section, uint64_t value, uint64_t size) {
-    auto it = symbol_index.find(name);
-    if (it != symbol_index.end()) {
-        if (!undefined) {
-            auto& s = obj.symbols[it->second];
-            s.bind = bind;
-            s.type = type;
-            s.undefined = false;
-            s.section = section;
-            s.value = value;
-            s.size = size;
-        }
-        return it->second;
-    }
-    mc::Symbol s;
-    s.name = name;
-    s.bind = bind;
-    s.type = type;
-    s.undefined = undefined;
-    s.section = section;
-    s.value = value;
-    s.size = size;
-    obj.symbols.push_back(s);
-    symbol_index[name] = static_cast<uint32_t>(obj.symbols.size() - 1);
-    return static_cast<uint32_t>(obj.symbols.size() - 1);
-}
-
-uint32_t AArch64ISel::add_runtime_symbol(const std::string& name) {
-    return ensure_symbol(name, mc::SymBind::Global, mc::SymType::Func, true);
-}
-
-uint32_t AArch64ISel::add_func_symbol(const IRFunction& fn) {
-    if (fn.is_extern) {
-        return ensure_symbol(abi_name(fn), mc::SymBind::Global, mc::SymType::Func, true);
-    }
-    return ensure_symbol(function_name(fn), mc::SymBind::Global, mc::SymType::Func,
-                         false, 0, text.code.size(), 0);
-}
 
 uint32_t AArch64ISel::region_alloc_label() {
     return next_region_label++;
@@ -322,11 +242,11 @@ void AArch64ISel::emit_call(const IRProgram& program, const IRFunction& fn, cons
     }
 
     const std::string callee_name = abi_name(callee);
-    if (symbol_index.count(callee_name) == 0) {
+    if (!symbols.has(callee_name)) {
         if (callee.is_extern) {
-            add_func_symbol(callee);
+            symbols.add_func_symbol(callee, text.code.size(), false);
         } else {
-            add_runtime_symbol(callee_name);
+            symbols.add_runtime_symbol(callee_name);
         }
     }
 
@@ -343,41 +263,10 @@ void AArch64ISel::emit_call(const IRProgram& program, const IRFunction& fn, cons
 
 // Syscall stub
 
-// Map the syscall number embedded in IR (@syscall(N)) to the target OS.
-//   Linux:     source numbers follow the x86-64 convention and are remapped
-//              to AArch64 Linux numbers here.
-//   ZeroPoint: numbers are ZeroPoint ABI numbers used as-is
-//              (write=0, read=1, open=10, exit=20). The stub passes the
-//              single buffer argument in X0; everything else (length,
-//              descriptor, mode) is computed by the OS.
-uint32_t AArch64ISel::map_syscall(uint32_t nr) const {
-    if (target_os == mc::TargetOS::ZeroPoint) return nr;
-    switch (nr) {
-        case 0:   return 63;   // read
-        case 1:   return 64;   // write
-        case 2:   return 56;   // open
-        case 3:   return 57;   // close
-        case 8:   return 62;   // lseek
-        case 9:   return 222;  // mmap
-        case 11:  return 215;  // munmap
-        case 39:  return 174;  // getpid
-        case 57:  return 172;  // fork
-        case 59:  return 221;  // execve
-        case 60:  return 93;   // exit
-        case 74:  return 82;   // fsync
-        case 257: return 56;   // openat (close=57, openat on x86=257 -> aarch64=56)
-        default:  return nr;   // pass-through for unknown
-    }
-}
-
 void AArch64ISel::emit_syscall_stub(const IRFunction& fn) {
-    ensure_symbol(abi_name(fn), mc::SymBind::Global, mc::SymType::Func,
+    symbols.ensure_symbol(abi_name(fn), mc::SymBind::Global, mc::SymType::Func,
                   false, 0, text.code.size(), 0);
-    // Syscall: X8 = number, X0-X5 = args, SVC #0, result in X0.
-    // No register shuffling needed (unlike x86-64 where RCX -> R10).
-    text.mov_imm64(aarch64::X8, static_cast<uint64_t>(map_syscall(static_cast<uint32_t>(fn.syscall_number))));
-    text.svc();
-    text.ret();
+    target.emit_syscall(out, static_cast<uint64_t>(fn.syscall_number));
 }
 
 // Region
@@ -388,23 +277,10 @@ void AArch64ISel::emit_syscall_stub(const IRFunction& fn) {
 //   [ptr+16] = capacity
 
 void AArch64ISel::emit_region_begin(const IRRegionBegin& x) {
-    // ZeroPoint has no mmap/munmap yet, so regions cannot be lowered.
-    if (target_os == mc::TargetOS::ZeroPoint) {
-        utils::logger::crash("region alloc is not supported on the ZeroPoint target");
-    }
     // Load region struct pointer into X9.
     text.ldr_imm(aarch64::X9, aarch64::X29, local_offset(x.region_local, {}));
 
-    // mmap(0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
-    // Syscall 222 on aarch64 Linux.
-    text.mov_imm64(aarch64::X0, 0);
-    text.mov_imm64(aarch64::X1, x.region_size);
-    text.mov_imm64(aarch64::X2, 3);          // PROT_READ|PROT_WRITE
-    text.mov_imm64(aarch64::X3, 0x22);       // MAP_PRIVATE|MAP_ANONYMOUS
-    text.mov_imm64(aarch64::X4, static_cast<uint64_t>(-1));
-    text.mov_imm64(aarch64::X5, 0);
-    text.mov_imm64(aarch64::X8, 222);
-    text.svc();
+    target.emit_mem_reserve(out, x.region_size);
 
     // Store returned pointer at [ptr+0].
     text.str_imm(aarch64::X0, aarch64::X9, 0);
@@ -447,10 +323,7 @@ void AArch64ISel::emit_region_alloc(const IRRegionAlloc& x, const IRFunction& fn
     text.b_cond(aarch64::COND_LS, 0);  // if X0 <= X1, skip (LS = unsigned lower or same)
     fixups.push_back({static_cast<uint32_t>(text.code.size() - 4), ok_label, true});
 
-    // exit(1) inline
-    text.mov_imm64(aarch64::X0, 1);
-    text.mov_imm64(aarch64::X8, 93);
-    text.svc();
+    target.emit_exit(out, 1);
 
     region_label_pos[ok_label] = text.code.size();
 }
@@ -460,8 +333,7 @@ void AArch64ISel::emit_region_end(const IRRegionEnd& x) {
     // munmap(ptr, size) — syscall 215 on aarch64.
     text.ldur(aarch64::X0, aarch64::X9, 0);
     text.ldur(aarch64::X1, aarch64::X9, 16);
-    text.mov_imm64(aarch64::X8, 215);
-    text.svc();
+    target.emit_mem_release(out);
 }
 
 // Per-instruction lowering
@@ -492,7 +364,7 @@ void AArch64ISel::emit_inst(const IRProgram& program, const IRFunction& fn, cons
             }
             const auto& lit = program.strings[x.string_id];
             const std::string label = string_label(lit.id);
-            ensure_symbol(label, mc::SymBind::Local, mc::SymType::Object,
+            symbols.ensure_symbol(label, mc::SymBind::Local, mc::SymType::Object,
                           false, mc::SEC_RODATA, obj.rodata.size(), lit.value.size() + 1);
             // ADRP X0, symbol@PAGE
             text.reloc(label, mc::RelType::AARCH64_ADR_PREL_PG_HI21, 0);
@@ -708,19 +580,19 @@ void AArch64ISel::emit_inst(const IRProgram& program, const IRFunction& fn, cons
                 text.ldr_imm(aarch64::X0, aarch64::X29, temp_offset(x.src, fn));
                 if (is_integer(x.src_kind)) {
                     if (is_signed_int(x.src_kind)) {
-                        add_runtime_symbol("qk_format_i64");
+                        symbols.add_runtime_symbol("qk_format_i64");
                         text.bl("qk_format_i64");
                     } else {
-                        add_runtime_symbol("qk_format_u64");
+                        symbols.add_runtime_symbol("qk_format_u64");
                         text.bl("qk_format_u64");
                     }
                 } else if (x.src_kind == ast::TypeKind::F32) {
                     text.ldr_s(aarch64::S0, aarch64::X29, temp_offset(x.src, fn));
                     text.fcvt_d_s(aarch64::S0, aarch64::D0);
-                    add_runtime_symbol("qk_format_f64");
+                    symbols.add_runtime_symbol("qk_format_f64");
                     text.bl("qk_format_f64");
                 } else {
-                    add_runtime_symbol("qk_format_f64");
+                    symbols.add_runtime_symbol("qk_format_f64");
                     text.bl("qk_format_f64");
                 }
                 text.str_imm(aarch64::X0, aarch64::X29, temp_offset(x.dst, fn));
@@ -845,7 +717,7 @@ void AArch64ISel::emit_inst(const IRProgram& program, const IRFunction& fn, cons
 // Main entry points
 
 void AArch64ISel::emit_func(const IRProgram& program, const IRFunction& fn) {
-    add_func_symbol(fn);
+    symbols.add_func_symbol(fn, text.code.size(), false);
     emit_prologue(fn);
     for (const auto& inst : fn.body) {
         emit_inst(program, fn, inst);
@@ -853,28 +725,17 @@ void AArch64ISel::emit_func(const IRProgram& program, const IRFunction& fn) {
 }
 
 void AArch64ISel::emit_start(const IRProgram& program) {
-    ensure_symbol("_start", mc::SymBind::Global, mc::SymType::Func, false, 0, text.code.size(), 0);
+    symbols.ensure_symbol("_start", mc::SymBind::Global, mc::SymType::Func, false, 0, text.code.size(), 0);
     const IRFunction* entry = find_entry(program);
     if (!entry) {
         utils::logger::crash("No entry point found");
     }
-    // BL main
-    text.bl(function_name(*entry));
-    if (target_os == mc::TargetOS::ZeroPoint) {
-        // ZeroPoint has no exit syscall yet (20 is reserved but unimplemented):
-        // park the core after main returns. PIC-safe: PC-relative loop only.
-        text.wfe();
-        text.b(-4);  // branch to self (WFE)
-    } else {
-        // MOV X8, #93; SVC #0  (exit syscall)
-        text.mov_imm64(aarch64::X8, 93);
-        text.svc();
-    }
+    target.emit_entry(out, function_name(*entry));
 }
 
 void AArch64ISel::emit_strings(const IRProgram& program) {
     for (const auto& s : program.strings) {
-        ensure_symbol(string_label(s.id), mc::SymBind::Local, mc::SymType::Object,
+        symbols.ensure_symbol(string_label(s.id), mc::SymBind::Local, mc::SymType::Object,
                       false, mc::SEC_RODATA, obj.rodata.size(), s.value.size() + 1);
         obj.rodata.insert(obj.rodata.end(), s.value.begin(), s.value.end());
         obj.rodata.push_back(0);
@@ -886,7 +747,7 @@ void AArch64ISel::emit_globals(const IRProgram& program) {
         const auto& g = program.globals[i];
         if (g.is_extern) continue;
         while (obj.data.size() % 8u != 0) obj.data.push_back(0);
-        ensure_symbol(global_label(i), mc::SymBind::Local, mc::SymType::Object,
+        symbols.ensure_symbol(global_label(i), mc::SymBind::Local, mc::SymType::Object,
                       false, mc::SEC_DATA, obj.data.size(), g.size);
         for (uint32_t j = 0; j < g.size; ++j) obj.data.push_back(0);
     }
@@ -894,10 +755,10 @@ void AArch64ISel::emit_globals(const IRProgram& program) {
 
 void AArch64ISel::patch_fixups() {
     for (const auto& f : fixups) {
-        const uint32_t target = f.region
+        const uint32_t destination = f.region
             ? region_label_pos.at(f.key)
             : label_pos.at(f.key);
-        const int32_t disp = static_cast<int32_t>(target - f.field_offset);
+        const int32_t disp = static_cast<int32_t>(destination - f.field_offset);
 
         // Read the instruction at field_offset to determine the type.
         uint32_t insn = 0;
@@ -939,8 +800,7 @@ void AArch64ISel::generate(const IRProgram& program) {
     obj.data.clear();
     obj.rodata.clear();
     obj.relocs.clear();
-    obj.symbols.clear();
-    symbol_index.clear();
+    symbols.clear();
     label_pos.clear();
     region_label_pos.clear();
     fixups.clear();
@@ -948,21 +808,23 @@ void AArch64ISel::generate(const IRProgram& program) {
     text.relocs.clear();
     next_region_label = 0;
 
-    if(should_emit_start && target_os == mc::TargetOS::ZeroPoint) emit_start(program);
+    if (should_emit_start && target.entry_emitted_first()) emit_start(program);
 
     for (const auto& fn : program.functions) {
         if (fn.is_extern) {
-            if (fn.syscall_number >= 0) {
+            if (target.supports_syscalls() && fn.syscall_number >= 0) {
                 emit_syscall_stub(fn);
             } else {
-                add_func_symbol(fn);
+                symbols.add_func_symbol(fn, text.code.size(), false);
             }
             continue;
         }
         emit_func(program, fn);
     }
 
-    if(should_emit_start && target_os != mc::TargetOS::ZeroPoint ) emit_start(program);
+    target.declare_runtime_imports(out);
+
+    if (should_emit_start && !target.entry_emitted_first()) emit_start(program);
     emit_strings(program);
     emit_globals(program);
     patch_fixups();

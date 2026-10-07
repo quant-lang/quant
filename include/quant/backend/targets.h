@@ -1,25 +1,31 @@
 #pragma once
 
 #include <optional>
+#include <span>
 #include <string>
-#include <vector>
+#include <string_view>
 
 #include "quant/backend/mc.h"
+#include "quant/backend/target.h"
 
 namespace quant::codegen::mc {
 
 // One entry of the target registry: a canonical CLI name plus its
 // (arch, OS) pair and whether this compiler build can select it.
 struct TargetInfo {
-    std::string name;   // canonical spelling, e.g. "x86_64-linux"
+    std::string_view name;   // canonical spelling, e.g. "x86_64-linux"
     TargetArch arch;
     TargetOS os;
-    bool enabled;
+    const quant::codegen::Target* target = nullptr;
+
+    // True when this build compiled the target's code generator in; a null
+    // factory in the registry marks a known-but-disabled target.
+    bool enabled() const { return target != nullptr; }
 };
 
 // All targets known to the compiler (enabled or not), in registry order.
 // The enabled set is fixed at CMake configure time via QUANT_BACKENDS.
-const std::vector<TargetInfo>& known_targets();
+std::span<const TargetInfo> known_targets();
 
 // Resolve a CLI spelling (canonical name or legacy alias like "x86_64",
 // "arm64") to a registry entry. Returns nullptr for unknown spellings.
@@ -32,7 +38,8 @@ const TargetInfo* resolve_target(const std::string& spelling);
 // on Windows), or the QUANT_DEFAULT_TARGET override chosen at CMake time.
 std::string host_default_target_name();
 
-// Comma-separated list of enabled backend names (for diagnostics).
-std::string enabled_targets_csv();
+// Comma-separated target names for diagnostics. only_enabled restricts the
+// list to backends compiled into this build.
+std::string target_names_csv(bool only_enabled = false);
 
 } // namespace quant::codegen::mc

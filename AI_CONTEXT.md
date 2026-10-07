@@ -587,20 +587,33 @@ Functions returning structs pass a hidden pointer as the first argument. The cal
 
 ### Multi-target support
 
-The compiler separates **build configuration** from **compilation target selection**:
+`quant::codegen::Target` (`include/quant/backend/target.h`) describes a target architecture and OS. Each target provides its ABI, syscall mapping, runtime and stdlib configuration, output format, and linker settings.
 
-- CMake (`QUANT_BACKENDS`, e.g. `-DQUANT_BACKENDS="x86_64-linux;aarch64-linux"`) decides which backends are enabled in the binary. Defaults: `x86_64-windows` on Windows hosts, `x86_64-linux;aarch64-linux;aarch64-zeropoint` elsewhere. The list is passed to C++ as the `QUANT_ENABLED_BACKENDS` compile definition and consumed by the target registry (`src/backend/targets.cpp`). Unknown backend names fail at CMake configure time.
-- Disabled backends are not compiled at all: CMake derives `QUANT_HAS_X86_64` / `QUANT_HAS_AARCH64` / `QUANT_HAS_PE` / `QUANT_HAS_ELF` from `QUANT_BACKENDS` and excludes the corresponding sources (`isel.cpp`+`x86_64.cpp`, `aarch64_isel.cpp`+`aarch_64.cpp`, `pe_writer.cpp`, `elf_writer.cpp`). The registry intersects the enabled list with these flags, so a target is selectable only when its generator exists in the binary.
-- `--target` resolves a CLI spelling through the registry (`include/quant/backend/targets.h`). Canonical names: `x86_64-linux`, `aarch64-linux`, `x86_64-windows`, `aarch64-zeropoint`. Legacy aliases preserved: `x86_64`/`x86-64` (host-relative), `arm64` -> aarch64-linux, `arm64-zeropoint`. An unknown spelling errors with the known list; a known-but-disabled target errors with the enabled list — never silently falls back. No `--target`: the CMake-time default (optional `-DQUANT_DEFAULT_TARGET=...`, validated against `QUANT_BACKENDS`), else the host-native backend if enabled; otherwise an explicit `--target` is required.
+Currently supported targets:
 
-Targets share the same IR but differ in:
+* `x86_64-linux`
+* `aarch64-linux`
+* `x86_64-windows`
+* `aarch64-zeropoint`
 
-- **Calling convention**: x86-64 uses RDI/RSI/RDX/RCX/R8/R9; AArch64 uses X0-X7 with X8 for sret (AAPCS64).
-- **Syscalls**: IR embeds x86-64 syscall numbers; the AArch64 Linux backend remaps them (e.g., `write=1` → `64`, `mmap=9` → `222`). The ZeroPoint backend passes numbers through unchanged.
-- **Executable flavor**: chosen by `TargetOS`, not by the host — `Windows` → PE32+ (`pe::write`), everything else → ELF (`elf::write`) + external linker. Both writers are portable byte emitters.
-- **Stack frame**: x86-64 grows down (RBP-based); AArch64 uses SUB/ADD SP with FP+16-based local addressing.
-- **Registers**: x86-64 has 16 GPRs; AArch64 has 31 GPRs. Both use stack-based lowering for temps.
-- **ISA encoding**: x86-64 is variable-length; AArch64 is fixed 32-bit with specific bitfield layouts.
+CMake builds only the targets selected by `QUANT_BACKENDS`. Unknown targets fail configuration, and the default host target must be enabled.
+
+The compiler keeps target-specific logic inside the backend:
+
+* instruction selection uses the appropriate calling convention: SysV, Win64, or AAPCS64;
+* syscall numbers are mapped per target;
+* runtime and stdlib behavior comes from the target;
+* `link_spec()` controls linking and output settings;
+* `static_stdlib_name()` controls prebuilt stdlib lookup.
+
+`NativeBackend` dispatches code generation using the target's architecture and object format. Target-specific code does not leak into semantic analysis, module loading, or instruction selection.
+
+`Options::target` and `CompilerContext::target` carry the resolved target configuration throughout compilation.
+
+Use `scripts/check_target_baseline.py` to compare generated binaries and diagnostics before and after backend changes.
+
+Adding a new target requires registering its name in `QUANT_KNOWN_BACKENDS` (CMake) and adding a guarded factory declaration and a row in the explicit table in `src/backend/registry.cpp`. New architectures or object formats may also require extending the corresponding enums and generators.
+
 
 ### ZeroPoint target
 

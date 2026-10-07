@@ -41,10 +41,14 @@ set(QUANT_AR "" CACHE STRING
 # Backends and targets
 #
 # QUANT_BACKENDS lists what the compiler can emit; only those code generators
-# are compiled in. --target then picks one of them at runtime (targets.cpp).
+# are compiled in. --target then picks one of them at runtime (registry.cpp).
 # ---------------------------------------------------------------------------
 
 set(QUANT_KNOWN_BACKENDS "x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint")
+
+# Target metadata (name, arch, OS) and factory guards live in the explicit
+# table in src/backend/registry.cpp; CMake only decides which factories exist
+# via the QUANT_TARGET_<key> definitions below. No static registration.
 
 if(NOT DEFINED QUANT_BACKENDS OR QUANT_BACKENDS STREQUAL "")
   set(QUANT_BACKENDS "${QUANT_KNOWN_BACKENDS}")
@@ -199,8 +203,15 @@ add_custom_target(quant_std_embed DEPENDS "${QUANT_STD_EMBED_HEADER}")
 
 set(QUANT_BACKEND_SOURCES
     src/backend/native_backend.cpp
-    src/backend/targets.cpp
+    src/backend/registry.cpp
+    src/backend/symbol_table.cpp
+    src/backend/code_emitter.cpp
 )
+
+foreach(_backend IN LISTS QUANT_BACKENDS)
+  string(REPLACE "-" "_" _target_source "${_backend}")
+  list(APPEND QUANT_BACKEND_SOURCES "src/backend/targets/${_target_source}.cpp")
+endforeach()
 
 if(QUANT_HAS_X86_64)
   list(APPEND QUANT_BACKEND_SOURCES src/backend/isel.cpp src/backend/x86_64.cpp)
@@ -265,10 +276,10 @@ target_compile_definitions(libquant PUBLIC
     QUANT_ROOT="${PROJECT_SOURCE_DIR}"
 )
 
-# QUANT_BACKENDS is a CMake list (semicolons); pass it as a comma-separated
-# string literal so no escaping survives the command line.
-list(JOIN QUANT_BACKENDS "," QUANT_BACKENDS_CSV)
-set(QUANT_BACKEND_DEFINES "QUANT_ENABLED_BACKENDS=\"${QUANT_BACKENDS_CSV}\"")
+foreach(_backend IN LISTS QUANT_BACKENDS)
+  string(REPLACE "-" "_" _macro "${_backend}")
+  list(APPEND QUANT_BACKEND_DEFINES "QUANT_TARGET_${_macro}=1")
+endforeach()
 
 foreach(_flag QUANT_HAS_X86_64 QUANT_HAS_AARCH64 QUANT_HAS_ELF QUANT_HAS_PE)
   if(${_flag})

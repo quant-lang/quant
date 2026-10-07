@@ -47,39 +47,57 @@ Use `AI_CONTEXT.md` as the main context for AI tools working with Quant.
 
 ## Adding an OS ABI
 
-Quant is OS-agnostic by design: the IR carries raw syscall numbers, while each
-target defines how they are lowered and which standard library implementation is used.
-If your OS is not listed in the [README target table](README.md#supported-targets),
-PRs adding its ABI are welcome.
+Each `quant::codegen::Target` represents one architecture/OS combination. Target-specific code lives in `src/backend/targets/`.
 
-A minimal ABI port touches these places:
+To add a new OS ABI:
 
-1. `include/quant/backend/mc.h` - add the OS to `TargetOS`.
-2. Target registry (`src/backend/targets.cpp`) - add the canonical `<arch>-<os>` name
-   and any aliases, plus the same name to `QUANT_KNOWN_BACKENDS` in `CMakeLists.txt`
-   so it can be enabled via `-DQUANT_BACKENDS=...`. If it introduces a new
-   architecture or executable format, extend the `QUANT_HAS_*` derivation in
-   `CMakeLists.txt` and guard its dispatch in `src/backend/native_backend.cpp` so
-   builds without this backend exclude its code entirely.
-3. Backend (`src/backend/aarch64_isel.cpp` / `src/backend/isel.cpp`) — syscall lowering:
-   number mapping, argument registers, and `_start` behavior. See
-   `AArch64ISel::map_syscall` for the ZeroPoint example.
-4. Standard library override in `std/<os>/` (e.g. `std/zp/io/io.qu`) - use the same
-   module name (`module "std::io";`). Implementations are resolved per target
-   automatically. Follow the pattern of `std/win/`.
-5. Linking - executable format and linker flags in `src/main.cpp` if your OS differs
-   from standard static ELF.
-6. Semantic restrictions (optional) - if your ABI exposes a limited syscall surface,
-   validate allowed `@syscall(N)` numbers in `src/semantic/semantic.cpp` so invalid
-   syscalls fail at compile time rather than inside the kernel.
+1. **Add a target implementation**
 
-Then:
+   * Create `src/backend/targets/<arch>_<os>.cpp`.
+   * Implement `Target` and add a `make_<arch>_<os>()` factory.
+   * Keep architecture-specific instruction lowering in the existing instruction selectors.
 
-1. Add tests. A hello-world program under the new target is enough to start.
-2. Update the target tables in `README.md`, `docs/lang.md`, and `AI_CONTEXT.md`.
+2. **Register the target**
 
-Keep new ABIs behind their own `--target` value. Never change the behavior of
-existing targets.
+   * Add its name to `QUANT_KNOWN_BACKENDS` in `CMakeLists.txt`.
+   * Register the target in `src/backend/registry.cpp`.
+   * Reuse existing architecture, OS, and object-format enums when possible.
+
+3. **Implement the OS ABI**
+   Define the target's:
+
+   * syscall mapping and validation;
+   * calling convention;
+   * runtime emission;
+   * standard library policy;
+   * linker settings.
+
+   Use `stdlib_root()` for an optional OS-specific `std/<os>` tree. Use `link_spec()` for output extensions and linker options.
+
+4. **Add tests**
+
+   * Add target-specific tests where needed.
+   * Update the target tables.
+   * Run the existing target baseline checks.
+
+A new architecture or OS may require changes to the corresponding enums in `mc.h`. A new instruction set or object format also requires the appropriate backend support.
+
+### Important invariants
+
+When adding or moving target code:
+
+* ISel prepares function/entry symbols before target emission hooks run.
+* Target hooks must preserve the existing memory-release calling sequence.
+* Do not reorder `mc::SymbolTable` entries.
+* Keep the existing AArch64 syscall number behavior, including its 32-bit truncation.
+* Do not change existing target behavior as part of a structural refactor.
+
+Build and test the compiler before and after the change. Compare target outputs with `scripts/check_target_baseline.py`.
+
+For targets with restricted syscall ABIs, use `validate_syscall()`, `syscall_surface()`, and `syscall_abi_name()`.
+
+Add CLI aliases in `registry.cpp` only when needed.
+
 
 ## Pull Requests
 

@@ -12,13 +12,14 @@ namespace utils::options{
             opts.target_name = t.name;
             opts.target_arch = t.arch;
             opts.target_os = t.os;
+            opts.target = t.target;
         }
 
-        [[noreturn]] void fail_disabled(const std::string& name) {
+        [[noreturn]] void fail_disabled(std::string_view name) {
             throw std::runtime_error(
-                "Target '" + name + "' is known but not enabled in this compiler build.\n"
-                "Enabled backends: " + quant::codegen::mc::enabled_targets_csv() + "\n"
-                "Reconfigure with: cmake -B build -DQUANT_BACKENDS=\"...;" + name + "\"");
+                "Target '" + std::string(name) + "' is known but not enabled in this compiler build.\n"
+                "Enabled backends: " + quant::codegen::mc::target_names_csv(true) + "\n"
+                "Reconfigure with: cmake -B build -DQUANT_BACKENDS=\"...;" + std::string(name) + "\"");
         }
 
     } // namespace
@@ -69,27 +70,15 @@ namespace utils::options{
                 if (i + 1 >= argc) {
                     throw std::runtime_error(
                         "Option '--target' requires a value. Known targets: "
-                        + [&] {
-                            std::string out;
-                            for (const auto& t : quant::codegen::mc::known_targets()) {
-                                if (!out.empty()) out += ", ";
-                                out += t.name;
-                            }
-                            return out;
-                        }());
+                        + quant::codegen::mc::target_names_csv());
                 }
                 std::string value = argv[++i];
                 const auto* t = quant::codegen::mc::resolve_target(value);
                 if (t == nullptr) {
-                    std::string known;
-                    for (const auto& k : quant::codegen::mc::known_targets()) {
-                        if (!known.empty()) known += ", ";
-                        known += k.name;
-                    }
                     throw std::runtime_error("Unknown target: '" + value
-                        + "'. Supported targets: " + known);
+                        + "'. Supported targets: " + quant::codegen::mc::target_names_csv());
                 }
-                if (!t->enabled) {
+                if (!t->enabled()) {
                     fail_disabled(t->name);
                 }
                 apply_target(opts, *t);
@@ -123,7 +112,7 @@ namespace utils::options{
         if (opts.target_name.empty()) {
             const std::string def = quant::codegen::mc::host_default_target_name();
             const auto* t = quant::codegen::mc::resolve_target(def);
-            if (t == nullptr || !t->enabled) {
+            if (t == nullptr || !t->enabled()) {
                 fail_disabled(def + " (default)");
             }
             apply_target(opts, *t);

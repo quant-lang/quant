@@ -6,6 +6,9 @@
 
 namespace quant::codegen::mc {
 
+enum class TargetAbi : uint8_t { SysV, Win64, AAPCS64 };
+enum class ObjectFormat : uint8_t { ELF, PE };
+
 enum class TargetArch : uint8_t {
     X86_64,
     AARCH64,
@@ -21,11 +24,6 @@ enum class TargetOS : uint8_t {
 
 // An (architecture, OS) pair identifying one compilation target.
 // See targets.h for the registry of known/enabled targets.
-struct Target {
-    TargetArch arch = TargetArch::X86_64;
-    TargetOS os = TargetOS::Linux;
-};
-
 enum class RelType : uint32_t {
     X86_64_64   = 1,   // S + A
     X86_64_PC32 = 2,   // S + A - P

@@ -139,14 +139,14 @@ bool build_ir(const Options& opts, const std::filesystem::path& input,
     const std::string target_name = opts.target.empty()
         ? codegen::mc::host_default_target_name() : opts.target;
     const auto* target = codegen::mc::resolve_target(target_name);
-    if (!target || !target->enabled) {
+    if (!target || !target->enabled()) {
         std::cerr << "error: target '" << target_name << "' is not available in this build\n";
         return false;
     }
 
     const auto start = Clock::now();
 
-    ctx.target_os = target->os;
+    ctx.target = target->target;
     ctx.emit_start = true;
     ctx.root_path = utils::io::get_executable_directory();
     {
@@ -158,7 +158,7 @@ bool build_ir(const Options& opts, const std::filesystem::path& input,
     auto* entry = mm.load_entry(input);
     if (!entry || ctx.errors.has_errors()) return false;
 
-    if (target->os != codegen::mc::TargetOS::ZeroPoint && mm.load_embedded("std::format") == nullptr) {
+    if (ctx.target->load_format_runtime() && mm.load_embedded("std::format") == nullptr) {
         const auto format_path = ctx.root_path / "std" / "format" / "format.qu";
         if (std::filesystem::exists(format_path)) mm.load_module(format_path);
     }

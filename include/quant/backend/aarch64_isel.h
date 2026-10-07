@@ -7,6 +7,8 @@
 
 #include "quant/ir/ir.h"
 #include "quant/backend/mc.h"
+#include "quant/backend/target.h"
+#include "quant/backend/code_emitter.h"
 #include "quant/backend/aarch_64.h"
 
 namespace quant::codegen {
@@ -16,8 +18,11 @@ struct AArch64ISel {
     aarch64::Emitter text;
     mc::Object obj;
 
-    // Target OS/ABI. Defaults to Linux; set before generate().
-    mc::TargetOS target_os = mc::TargetOS::Linux;
+    const Target& target;
+    mc::SymbolTable symbols{obj.symbols};
+    CodeEmitter out{text, obj, symbols};
+
+    explicit AArch64ISel(const Target& selected) : target(selected) {}
 
     bool should_emit_start = true;
 
@@ -30,29 +35,16 @@ private:
         bool region;
     };
 
-    std::unordered_map<std::string, uint32_t> symbol_index;
     std::unordered_map<uint32_t, uint32_t> label_pos;
     std::unordered_map<uint32_t, uint32_t> region_label_pos;
     std::vector<Fixup> fixups;
     uint32_t next_region_label = 0;
 
-    std::string asm_mangle(std::string name);
-    std::string function_name(const IRFunction& fn);
-    std::string abi_name(const IRFunction& fn);
-    std::string string_label(uint32_t id);
-    std::string global_label(uint32_t id);
 
-    std::size_t align16(std::size_t n);
-    const IRFunction* find_entry(const IRProgram& program);
 
     int64_t local_offset(Local l, const IRFunction& fn);
     int64_t temp_offset(Reg r, const IRFunction& fn);
 
-    uint32_t ensure_symbol(const std::string& name, mc::SymBind bind, mc::SymType type,
-                           bool undefined = false, uint32_t section = 0,
-                           uint64_t value = 0, uint64_t size = 0);
-    uint32_t add_runtime_symbol(const std::string& name);
-    uint32_t add_func_symbol(const IRFunction& fn);
 
     uint32_t region_alloc_label();
 
@@ -62,7 +54,6 @@ private:
     void emit_inst(const IRProgram& program, const IRFunction& fn, const IRInst& inst);
     void emit_call(const IRProgram& program, const IRFunction& fn, const IRCall& x);
     void emit_syscall_stub(const IRFunction& fn);
-    uint32_t map_syscall(uint32_t nr) const;
     void emit_region_begin(const IRRegionBegin& x);
     void emit_region_alloc(const IRRegionAlloc& x, const IRFunction& fn);
     void emit_region_end(const IRRegionEnd& x);

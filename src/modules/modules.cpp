@@ -125,15 +125,10 @@ Module* ModuleManager::load_embedded_module(const std::string& imp) {
     // Candidate embedded paths, most specific first: platform overrides,
     // then the shared std/ tree. Each is either a primary file or a directory.
     std::vector<std::pair<std::string, bool>> candidates;
-    // Windows target: WinAPI-based stdlib override (e.g. std::io -> std/win/io).
-    if (ctx.target_os == codegen::mc::TargetOS::Windows) {
-        candidates.emplace_back("std/win/" + module_name_to_rel_path(rest), false);
-        candidates.emplace_back("std/win/" + rest, true);
-    }
-    // ZeroPoint target: syscall-based stdlib override (e.g. std::io -> std/zp/io).
-    if (ctx.target_os == codegen::mc::TargetOS::ZeroPoint) {
-        candidates.emplace_back("std/zp/" + module_name_to_rel_path(rest), false);
-        candidates.emplace_back("std/zp/" + rest, true);
+    const std::string override_root(ctx.target->stdlib_root());
+    if (!override_root.empty()) {
+        candidates.emplace_back(override_root + "/" + module_name_to_rel_path(rest), false);
+        candidates.emplace_back(override_root + "/" + rest, true);
     }
     candidates.emplace_back("std/" + module_name_to_rel_path(rest), false);
     candidates.emplace_back("std/" + rest, true);
@@ -324,33 +319,12 @@ void ModuleManager::build_graph(Module* entry) {
 
             // 2. Filesystem fallback (user modules, dev std overrides).
             if (!dep) {
-                // Windows native backend: std modules are implemented with @import
-                // and live in <root>/std/win/ (e.g. "std::io" -> std/win/io/io.qu).
-                if (ctx.target_os == codegen::mc::TargetOS::Windows &&
-                    imp.rfind("std::", 0) == 0) {
-                    fs::path rest = module_name_to_path(imp.substr(5)); // "io.qu"
-                    fs::path win_root = ctx.root_path / "std" / "win";
-                    fs::path primary = win_root / rest;
-                    fs::path dir = win_root / rest.parent_path() / rest.stem();
-
-                    if (fs::exists(primary)) {
-                        dep = load_module(primary);
-                    } else if (fs::exists(dir) && fs::is_directory(dir)) {
-                        for (const auto& dirent : fs::directory_iterator(dir)) {
-                            if (dirent.path().extension() != ".qu") continue;
-                            auto* m = load_module(dirent.path());
-                            if (m->name == imp) dep = m;
-                        }
-                    }
-                }
-                // ZeroPoint native backend: syscall-based stdlib override lives
-                // in <root>/std/zp/ (e.g. "std::io" -> std/zp/io/io.qu).
-                if (dep == nullptr && ctx.target_os == codegen::mc::TargetOS::ZeroPoint &&
-                    imp.rfind("std::", 0) == 0) {
-                    fs::path rest = module_name_to_path(imp.substr(5)); // "io.qu"
-                    fs::path zp_root = ctx.root_path / "std" / "zp";
-                    fs::path primary = zp_root / rest;
-                    fs::path dir = zp_root / rest.parent_path() / rest.stem();
+                const auto override_root = ctx.target->stdlib_root();
+                if (!override_root.empty() && imp.rfind("std::", 0) == 0) {
+                    fs::path rest = module_name_to_path(imp.substr(5));
+                    fs::path root = ctx.root_path / override_root;
+                    fs::path primary = root / rest;
+                    fs::path dir = root / rest.parent_path() / rest.stem();
 
                     if (fs::exists(primary)) {
                         dep = load_module(primary);

@@ -100,7 +100,9 @@ int main(int argc, char **argv)
         auto start = high_resolution_clock::now();
 
         quant::CompilerContext ctx;
-        ctx.target_os = opts.target_os;
+        ctx.target = opts.target;
+        const auto link_spec = opts.target->link_spec();
+        const auto static_stdlib = opts.target->static_stdlib_name();
         ctx.emit_start = !opts.static_lib;
 
         {
@@ -116,7 +118,7 @@ int main(int argc, char **argv)
         // Unpack it and link against it instead of regenerating stdlib code
         // from the embedded sources on every run.
 #if QUANT_USE_LIBQU
-        if (opts.target_os == quant::codegen::mc::TargetOS::Linux && !opts.static_lib) {
+        if (!static_stdlib.empty() && !opts.static_lib) {
             for (const auto& archive : quant::embedded_libqu::archives()) {
                 if (archive.target != opts.target_name) continue;
 
@@ -135,10 +137,8 @@ int main(int argc, char **argv)
         // stdlib (.a) shipped next to the binary: lib/qu-<arch>-<os>.a, then
         // the same name in the parent directory (build layout).
         if (!ctx.use_static_std &&
-            opts.target_os == quant::codegen::mc::TargetOS::Linux && !opts.static_lib) {
-            const char* arch_str = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
-                ? "aarch64" : "x86_64";
-            auto lib_name = std::string("libqu-") + arch_str + "-linux.a";
+            !static_stdlib.empty() && !opts.static_lib) {
+            const auto& lib_name = static_stdlib;
             auto lib_path = ctx.root_path / "lib" / lib_name;
             if (!std::filesystem::exists(lib_path)) {
                 lib_path = ctx.root_path.parent_path() / "lib" / lib_name;
@@ -175,7 +175,7 @@ int main(int argc, char **argv)
         // Skipped on ZeroPoint: format depends on std::heap, and the ZeroPoint
         // ABI has no allocation syscalls yet (kernel malloc is TODO), so the
         // runtime is unusable there and its mmap syscalls are invalid.
-        if (opts.target_os != quant::codegen::mc::TargetOS::ZeroPoint &&
+        if (opts.target->load_format_runtime() &&
             mm.load_embedded("std::format") == nullptr) {
             auto format_path = ctx.root_path / "std" / "format" / "format.qu";
             if (std::filesystem::exists(format_path)) {
@@ -200,7 +200,7 @@ int main(int argc, char **argv)
         if (ctx.errors.has_errors()) return 1;
 
         // Windows only, because Linux has compile only flag(-c) and checks @entry before ld cmd;
-        if (opts.target_os == quant::codegen::mc::TargetOS::Windows) {
+        if (link_spec.needs_pre_link_validation) {
             // Linker validation
             linker.validate();
             if (ctx.errors.has_errors()) return 1;
@@ -248,16 +248,16 @@ int main(int argc, char **argv)
             return true;
         };
 
-        if (opts.target_os == quant::codegen::mc::TargetOS::Windows) {
+        if (!link_spec.needs_external_linker) {
 
             if (!exe_path.has_extension()) {
-                exe_path += ".exe";
+                exe_path += link_spec.executable_ext;
             }
 
             // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto pe_bytes = nativeBackend.generate(irgen.program, ctx, opts.target_arch, opts.target_os);
+                auto pe_bytes = nativeBackend.generate(irgen.program, ctx, *opts.target);
                 if (!write_output(exe_path, pe_bytes)) return 1;
             }
         } else if (opts.static_lib) {
@@ -268,7 +268,7 @@ int main(int argc, char **argv)
 
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto elf_bytes = nativeBackend.generate(irgen.program, ctx, opts.target_arch, opts.target_os);
+                auto elf_bytes = nativeBackend.generate(irgen.program, ctx, *opts.target);
                 if (!write_output(obj_path, elf_bytes)) return 1;
             }
 
@@ -294,7 +294,7 @@ int main(int argc, char **argv)
 
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto elf_bytes = nativeBackend.generate(irgen.program, ctx, opts.target_arch, opts.target_os);
+                auto elf_bytes = nativeBackend.generate(irgen.program, ctx, *opts.target);
                 if (!write_output(obj_path, elf_bytes)) return 1;
             }
 
@@ -307,15 +307,14 @@ int main(int argc, char **argv)
                     ld_name = opts.linker_name;
                     if (ld_name == "lld") ld_name = "ld.lld";
                 } else {
-                    ld_name = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
-                        ? "ld.lld" : "ld";
+                    ld_name = link_spec.default_linker;
                 }
                 std::string link_cmd = ld_name + " --gc-sections -o " + exe_path.string() + " " + obj_path.string();
                 if (ctx.use_static_std) {
                     link_cmd += " " + ctx.static_std_path.string();
                 }
-                if (opts.target_os == quant::codegen::mc::TargetOS::ZeroPoint) {
-                    link_cmd += " -pie --image-base=0x40000000";
+                if (!link_spec.extra_flags.empty()) {
+                    link_cmd += " " + link_spec.extra_flags;
                 }
                 if (std::system(link_cmd.c_str()) != 0) {
                     utils::logger::error("link failed\n");

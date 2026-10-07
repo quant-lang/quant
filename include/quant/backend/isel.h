@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "quant/backend/mc.h"
+#include "quant/backend/target.h"
+#include "quant/backend/code_emitter.h"
 #include "quant/backend/x86_64.h"
 #include "quant/ir/ir.h"
 #include "quant/support/compiler_context.h"
@@ -17,14 +19,12 @@ struct ISel {
     mc::Object obj;
     x86::Emitter text;
 
-    // Target OS for the OUTPUT binary (not the host): decides calling
-    // convention, syscalls vs WinAPI imports, and PE vs ELF layout.
-    mc::TargetOS target_os = mc::TargetOS::Linux;
+    const Target& target;
+    mc::SymbolTable symbols{obj.symbols};
+    CodeEmitter out{text, obj, symbols};
 
     uint32_t next_region_label = 0;
 
-    // symbol name -> index in obj.symbols
-    std::unordered_map<std::string, uint32_t> symbol_index;
 
     // label key -> text offset (IR labels and region labels are separate)
     std::unordered_map<uint32_t, uint32_t> label_pos;
@@ -39,7 +39,7 @@ struct ISel {
 
     void generate(const IRProgram& program);
 
-    ISel(CompilerContext& _ctx): ctx(_ctx){}
+    ISel(CompilerContext& context, const Target& selected) : target(selected), ctx(context) {}
 
 private:
     CompilerContext& ctx;
@@ -47,13 +47,6 @@ private:
     x86::Mem local_slot(Local l);
     x86::Mem temp_slot(Reg r, const IRFunction& fn);
 
-    uint32_t ensure_symbol(const std::string& name, mc::SymBind bind, mc::SymType type,
-                           bool undefined, uint32_t section, uint64_t value, uint64_t size,
-                           const std::string& import_dll = {},
-                           const std::string& import_name = {});
-    uint32_t add_runtime_symbol(const std::string& name);
-    uint32_t add_func_symbol(const IRFunction& fn);
-    uint32_t add_import_symbol(const std::string& dll, const std::string& name);
 
     void emit_func(const IRProgram& program, const IRFunction& fn);
     void emit_syscall_stub(const IRFunction& fn);
@@ -74,14 +67,7 @@ private:
     void emit_globals(const IRProgram& program);
     void patch_fixups();
 
-    static const IRFunction* find_entry(const IRProgram& program);
 
-    static std::string asm_mangle(std::string name);
-    static std::string function_name(const IRFunction& fn);
-    static std::string abi_name(const IRFunction& fn);
-    static std::string string_label(uint32_t id);
-    static std::string global_label(uint32_t id);
-    static std::size_t align16(std::size_t n);
 };
 
 } // namespace quant::codegen

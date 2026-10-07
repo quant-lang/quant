@@ -11,7 +11,7 @@
 #include "quant/support/alloc.h"
 #include "quant/semantic/symbol_table.h"
 #include "quant/modules/module.h"
-#include "quant/backend/mc.h"
+#include "quant/backend/targets.h"
 #include "utils/errors.h"
 
 namespace quant {
@@ -29,9 +29,11 @@ namespace quant {
 
         std::filesystem::path root_path;
 
-        // Target OS/ABI (set from --target). Selects the stdlib override
-        // tree (std/zp/ for ZeroPoint) and the syscall lowering layer.
-        codegen::mc::TargetOS target_os = codegen::mc::TargetOS::Linux;
+        // Callers selecting a non-default target set this before loading modules.
+        const codegen::Target* target = [] {
+            const auto* info = codegen::mc::resolve_target(codegen::mc::host_default_target_name());
+            return info ? info->target : nullptr;
+        }();
 
         // When true, std modules are skipped during IR gen / codegen and
         // the pre-compiled static stdlib (.a) is linked instead.

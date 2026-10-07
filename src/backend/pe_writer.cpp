@@ -12,7 +12,6 @@ namespace quant::codegen::pe {
 
 namespace {
 
-constexpr uint64_t IMAGE_BASE = 0x140000000ull;
 constexpr uint32_t FILE_ALIGN = 0x200;
 constexpr uint32_t SEC_ALIGN = 0x1000;
 
@@ -99,7 +98,7 @@ void write_pe_header(Buf& b, uint16_t num_sections, uint32_t entry_rva,
                      uint32_t base_of_code, uint32_t size_of_image,
                      uint32_t size_of_headers, uint32_t size_of_code,
                      uint32_t size_of_init_data, uint32_t import_dir_rva,
-                     uint32_t import_dir_size) {
+                     uint32_t import_dir_size, uint64_t image_base) {
     b.u32(0x00004550); // "PE\0\0"
 
     // COFF header
@@ -119,7 +118,7 @@ void write_pe_header(Buf& b, uint16_t num_sections, uint32_t entry_rva,
     b.u32(0);                       // SizeOfUninitializedData
     b.u32(entry_rva);
     b.u32(base_of_code);
-    b.u64(IMAGE_BASE);
+    b.u64(image_base);
     b.u32(SEC_ALIGN);
     b.u32(FILE_ALIGN);
     b.u16(6); b.u16(0);             // OS version
@@ -169,7 +168,7 @@ void write_section_header(Buf& b, const char* name, uint32_t virtual_size,
 
 } // namespace
 
-std::vector<uint8_t> write(const mc::Object& obj) {
+std::vector<uint8_t> write(const mc::Object& obj, uint64_t image_base) {
     const std::vector<Import> imports = collect_imports(obj);
 
     // Group import indices by DLL (order of first appearance).
@@ -371,7 +370,7 @@ std::vector<uint8_t> write(const mc::Object& obj) {
     out.pad_to(0x80);
     write_pe_header(out, num_sections, entry_rva, text_rva, size_of_image,
                     size_of_headers, size_of_code, size_of_init_data,
-                    import_dir_rva, import_dir_size);
+                    import_dir_rva, import_dir_size, image_base);
 
     out.pad_to(0x80 + 4 + 20 + 240);
     // Section headers must stay inside SizeOfHeaders.

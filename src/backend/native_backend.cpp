@@ -28,44 +28,39 @@ namespace {
 
 } // namespace
 
-std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, CompilerContext& ctx, mc::TargetArch arch, mc::TargetOS os) {
-    // Executable flavor is decided by the target OS, not by the host:
-    // the elf/pe writers are portable byte emitters. CMake compiles in only
-    // the writers and instruction selectors that some enabled backend needs.
-    const bool pe = (os == mc::TargetOS::Windows);
-
-    if (arch == mc::TargetArch::AARCH64) {
+std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, CompilerContext& ctx,
+                                              const Target& target) {
+    mc::Object obj;
+    if (target.arch() == mc::TargetArch::AARCH64) {
 #ifdef QUANT_HAS_AARCH64
-        AArch64ISel isel;
-        isel.target_os = os;
+        AArch64ISel isel(target);
         isel.should_emit_start = ctx.emit_start;
         isel.generate(program);
+        obj = std::move(isel.obj);
 #else
         backend_not_compiled("AArch64");
 #endif
-#if defined(QUANT_HAS_AARCH64) && defined(QUANT_HAS_PE)
-        if (pe) return pe::write(isel.obj);
-#endif
-#if defined(QUANT_HAS_AARCH64) && defined(QUANT_HAS_ELF)
-        return elf::write(isel.obj, arch);
-#endif
-        backend_not_compiled("executable writer");
-    }
-
+    } else {
 #ifdef QUANT_HAS_X86_64
-    ISel isel(ctx);
-    isel.target_os = os;
-    isel.generate(program);
+        ISel isel(ctx, target);
+        isel.generate(program);
+        obj = std::move(isel.obj);
 #else
-    backend_not_compiled("x86-64");
+        backend_not_compiled("x86-64");
 #endif
-#if defined(QUANT_HAS_X86_64) && defined(QUANT_HAS_PE)
-    if (pe) return pe::write(isel.obj);
+    }
+    if (target.object_format() == mc::ObjectFormat::PE) {
+#ifdef QUANT_HAS_PE
+        return pe::write(obj, target.image_base());
+#else
+        backend_not_compiled("PE writer");
 #endif
-#if defined(QUANT_HAS_X86_64) && defined(QUANT_HAS_ELF)
-    return elf::write(isel.obj);
+    }
+#ifdef QUANT_HAS_ELF
+    return elf::write(obj, target.arch());
+#else
+    backend_not_compiled("ELF writer");
 #endif
-    backend_not_compiled("executable writer");
 }
 
 } // namespace quant::codegen

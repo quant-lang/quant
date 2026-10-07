@@ -38,6 +38,7 @@ namespace utils::options {
         std::string target_name;   // canonical, e.g. "aarch64-zeropoint"
         TargetArch target_arch = TargetArch::X86_64;
         TargetOS target_os = TargetOS::Linux;
+        const quant::codegen::Target* target = nullptr;
     };
 
     enum class Flag {
