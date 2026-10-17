@@ -1,0 +1,40 @@
+/* Methods receive an implicit `this` receiver (a mutable pointer to the
+   instance). It can be used to access fields explicitly, be returned for
+   chaining, be passed to other functions, and call sibling methods. */
+struct Pair {
+    mut i32 a;
+    mut i32 b;
+
+    i32 sum() { return this.a + this.b; }
+
+    *Pair bump() {
+        this.a = this.a + 1;
+        this.b = this.b + 1;
+        return this;
+    }
+
+    i32 via_this() { return this.sum(); }
+};
+
+i32 pair_total(*Pair p) { return p.a + p.b; }
+
+@entry i32 main() {
+    @init mut Pair p;
+    p.a = 1;
+    p.b = 2;
+
+    // return this + chaining
+    p.bump().bump();
+    if (p.sum() != 7)
+        return 1;
+
+    // this.method()
+    if (p.via_this() != 7)
+        return 2;
+
+    // this passed to a free function expecting *Pair
+    if (p.via_this() != pair_total(&p))
+        return 3;
+
+    return 0;
+}

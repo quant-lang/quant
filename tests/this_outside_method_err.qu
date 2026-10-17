@@ -1,0 +1,4 @@
+// `this` is only available inside a method body.
+@entry i32 main() {
+    return this.a;
+}

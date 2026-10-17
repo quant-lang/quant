@@ -1519,6 +1519,17 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
 
     ScopeGuard scope(ctx.symbols);
 
+    if (func.struct_name) {
+        const ast::Type* struct_ty = canonicalize_struct_type(ctx.types.get_struct(current_method_struct));
+        const ast::Type* this_ty = ctx.types.get_pointer(struct_ty);
+
+        ctx.symbols.declare_symbol("this", symb_t::Symbol{
+            "this",
+            symb_t::VarSymbol{ this_ty, true, true },
+            {}
+        });
+    }
+
     for (const auto& arg : func.args) {
         if (!ctx.symbols.declare(arg)) {
             ctx.errors.add("Duplicate function argument: " + arg.name);
@@ -2090,6 +2101,7 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(ast::Expr* expr) {
         if (!sym) {
             // Inside a method body the struct's fields are implicitly in scope.
             if (const ast::Type* field_type = method_field_type(var->name)) {
+                expr->resolved_type = field_type;
                 return field_type;
             }
             // Check for implicit 'out' struct field access
@@ -2099,6 +2111,7 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(ast::Expr* expr) {
                 }
                 const ast::Type* field_type = ctx.types.get_field_type(current_function_return_type->struct_name, var->name);
                 if (field_type) {
+                    expr->resolved_type = field_type;
                     return field_type;
                 }
             }
@@ -2113,7 +2126,9 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(ast::Expr* expr) {
             return nullptr;
         }
 
-        return symbol_type(*sym);
+        const ast::Type* lvalue_type = symbol_type(*sym);
+        expr->resolved_type = lvalue_type;
+        return lvalue_type;
     }
 
     if (const auto* field = std::get_if<ast::FieldExpr>(&expr->kind)) {

@@ -667,8 +667,8 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
 
         if (is_method) {
             const uint32_t self_local = new_local();
-            local_scopes.back()["self"] = self_local;
-            type_scopes.back()["self"] = nullptr;
+            local_scopes.back()["this"] = self_local;
+            type_scopes.back()["this"] = nullptr;
         }
 
         if (is_sret) {
@@ -850,8 +850,8 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     // argument (arg slot 0), before any user arguments or the sret pointer.
     if (is_method) {
         const uint32_t self_local = new_local();
-        local_scopes.back()["self"] = self_local;
-        type_scopes.back()["self"] = nullptr;
+        local_scopes.back()["this"] = self_local;
+        type_scopes.back()["this"] = nullptr;
     }
 
     if (is_sret) {
@@ -1507,13 +1507,13 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 return dst;
             }
 
-            // Bare field read inside a method: <self>.<field>.
+            // Bare field read inside a method: <this>.<field>.
             if (!current_method_struct_name.empty()) {
                 const auto field = resolve_struct_field_by_name(ctx, current_method_struct_name, node.name);
                 if (field.second) {
                     uint32_t self_local = 0;
                     const ast::Type* self_type = nullptr;
-                    if (lookup_local("self", self_local, self_type)) {
+                    if (lookup_local("this", self_local, self_type)) {
                         const uint32_t self_ptr = new_reg();
                         emit(IRLoadLocal{ self_ptr, self_local });
                         const uint32_t dst = new_reg();
@@ -1680,13 +1680,13 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     }
                 }
 
-                // Bare field write inside a method: <self>.<field> = value.
+                // Bare field write inside a method: <this>.<field> = value.
                 if (!current_method_struct_name.empty()) {
                     const auto field = resolve_struct_field_by_name(ctx, current_method_struct_name, var->name);
                     if (field.second) {
                         uint32_t self_local = 0;
                         const ast::Type* self_type = nullptr;
-                        if (lookup_local("self", self_local, self_type)) {
+                        if (lookup_local("this", self_local, self_type)) {
                             const uint32_t self_ptr = new_reg();
                             emit(IRLoadLocal{ self_ptr, self_local });
                             const uint32_t v = gen_expr_as(*node.value, field.second);
@@ -2028,7 +2028,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                         && struct_has_method(ctx, current_method_struct_name, callee_path[0])) {
                     uint32_t self_local = 0;
                     const ast::Type* self_type = nullptr;
-                    if (lookup_local("self", self_local, self_type)) {
+                    if (lookup_local("this", self_local, self_type)) {
                         const uint32_t self_ptr = new_reg();
                         emit(IRLoadLocal{ self_ptr, self_local });
                         return emit_method_call(current_method_struct_name, callee_path[0], self_ptr, true);

@@ -79,7 +79,7 @@ struct slice<T> {
         return sub;
     }
 
-    // copy_from - copy up to self.len elements from `src` into self.
+    // copy_from - copy up to this.len elements from `src` into this.
     // Copies min(dst.len, src.len) elements.
     void copy_from(&slice<T> src) {
         mut u64 n = src.len;

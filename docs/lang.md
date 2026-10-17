@@ -449,6 +449,28 @@ struct Box<T> {
 };
 ```
 
+Methods get an implicit `this` pointer to the current struct. You can use a
+field by its name (`x`) or write `this.x`. Use `this` when a parameter has the
+same name as a field, or return it to chain method calls.
+```
+struct Point {
+    mut i32 x;
+    mut i32 y;
+
+    // this.field disambiguates from a parameter of the same name
+    void translate(i32 x) {
+        this.x = this.x + x;
+    }
+
+    // returning this enables chaining: p.move(1, 2).move(3, 4)
+    *Point move(i32 dx, i32 dy) {
+        this.x = this.x + dx;
+        this.y = this.y + dy;
+        return this;
+    }
+};
+```
+
 ---
 
 ## Enums
