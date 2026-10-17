@@ -114,9 +114,16 @@ symb_t::Symbol* Evaluator::resolve_symbol_path(const std::vector<std::string>& p
         ns = ns->parent;
     }
 
-    if (auto* first = ctx.symbols.lookup(path[0])) {
-        if (std::holds_alternative<symb_t::EnumSymbol>(first->data)) {
-            return ctx.symbols.lookup(path.back());
+    if (path.size() >= 2) {
+        std::vector<std::string> enum_path(path.begin(), path.end() - 1);
+        if (auto* enum_sym = resolve_symbol_path(enum_path, nullptr)) {
+            if (auto* es = std::get_if<symb_t::EnumSymbol>(&enum_sym->data)) {
+                auto it = es->variant_symbols.find(path.back());
+                if (it != es->variant_symbols.end()) {
+                    return it->second;
+                }
+                return nullptr;
+            }
         }
     }
 

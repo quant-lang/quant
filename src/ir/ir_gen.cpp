@@ -39,9 +39,18 @@ symb_t::Symbol* resolve_qualified(CompilerContext& ctx, const std::vector<std::s
     }
 
     if (path.size() >= 2) {
-        auto* first_sym = ctx.symbols.lookup(path[0]);
-        if (first_sym && std::holds_alternative<quant::symb_t::EnumSymbol>(first_sym->data)) {
-            return ctx.symbols.lookup(path.back());
+        /* Enum::Variant (possibly namespace-qualified): resolve the enum
+        first, then look the variant up in that enum only. A global
+        bare-name fallback would pick an unrelated enum's variant. */
+        std::vector<std::string> enum_path(path.begin(), path.end() - 1);
+        if (auto* enum_sym = resolve_qualified(ctx, enum_path)) {
+            if (auto* es = std::get_if<quant::symb_t::EnumSymbol>(&enum_sym->data)) {
+                auto it = es->variant_symbols.find(path.back());
+                if (it != es->variant_symbols.end()) {
+                    return it->second;
+                }
+                return nullptr;
+            }
         }
     }
 

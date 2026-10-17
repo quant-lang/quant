@@ -1,0 +1,8 @@
+// `OpType::FACT` must be an error: FACT is not a variant of OpType even
+// though another enum (TokenType) declares a variant with the same name.
+enum TokenType { PLUS, MINUS, NUMBER, FACT };
+enum OpType { PLUS, MULTIPLY, FACTORIAL };
+
+@entry i32 main() {
+    return OpType::FACT;
+}

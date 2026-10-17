@@ -1,0 +1,18 @@
+// Qualified enum variants must resolve within their own enum even when
+// several enums declare a variant with the same name.
+enum TokenType { PLUS, MINUS, NUMBER, FACT };
+enum OpType { PLUS, MULTIPLY, FACTORIAL };
+
+@entry i32 main() {
+    // TokenType::PLUS == 0, OpType::PLUS == 0 (coincidence, but must resolve)
+    i32 a = TokenType::PLUS;
+    // TokenType::FACT == 3, while OpType has no FACT at all
+    i32 b = TokenType::FACT;
+    // OpType::FACTORIAL == 2
+    i32 c = OpType::FACTORIAL;
+
+    if (a != 0) return 1;
+    if (b != 3) return 2;
+    if (c != 2) return 3;
+    return 0;
+}

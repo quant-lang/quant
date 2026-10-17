@@ -233,6 +233,40 @@ namespace quant::symb_t {
         return true;
     }
 
+    bool SymbolTable::declare_enum(const std::string& enum_name,
+                                   const std::vector<std::string>& variants,
+                                   const std::vector<ast::Attribute>& attrs,
+                                   const ast::Type* variant_type) {
+        EnumSymbol sym;
+        sym.variant_names = variants;
+
+        for (size_t i = 0; i < variants.size(); ++i) {
+            if (sym.variant_symbols.contains(variants[i])) {
+                continue;
+            }
+            Symbol vsym{variants[i], VarSymbol{variant_type, false, true, static_cast<int64_t>(i)},{}};
+            vsym.owning_module = current_module_ns;
+            auto* ptr = memory::make<Symbol>(arena, std::move(vsym));
+            sym.variant_symbols.emplace(variants[i], ptr);
+        }
+
+        if (!declare_symbol(enum_name, Symbol{enum_name, std::move(sym), attrs})) {
+            return false;
+        }
+
+        // Bare-name access: variants are visible without the enum qualifier.
+        // First declaration wins, matching the documented enum semantics.
+        for (size_t i = 0; i < variants.size(); ++i) {
+            declare_symbol(variants[i], Symbol{
+                variants[i],
+                VarSymbol{variant_type, false, true, static_cast<int64_t>(i)},
+                {}
+            });
+        }
+
+        return true;
+    }
+
     bool SymbolTable::declare_method(const std::string& struct_name, const ast::FuncStmt& fn) {
         FuncSymbol sym;
 

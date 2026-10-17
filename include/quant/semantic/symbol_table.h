@@ -45,8 +45,12 @@ namespace quant::symb_t {
         std::vector<std::vector<ast::Attribute>> field_attributes;
         std::vector<std::string> method_names;
     };
+    struct Symbol;
+
     struct EnumSymbol {
         std::vector<std::string> variant_names;
+        // Variant name -> symbol for this enum only
+        std::unordered_map<std::string, Symbol*> variant_symbols;
     };
     using SymbolData = std::variant<
         VarSymbol,
@@ -87,6 +91,13 @@ namespace quant::symb_t {
         bool declare(const ast::FuncStmt& fn);
         bool declare(const ast::StructDecl& str);
         bool declare_method(const std::string& struct_name, const ast::FuncStmt& fn);
+        // Declare an enum. Variants are registered globally for bare-name
+        // access (first declaration wins) and, additionally, per-enum so
+        // qualified access resolves to the correct enum's variant.
+        bool declare_enum(const std::string& enum_name,
+            const std::vector<std::string>& variants,
+            const std::vector<ast::Attribute>& attrs,
+            const ast::Type* variant_type);
         bool declare_struct(const std::string& name,
             const std::vector<std::pair<std::string, const ast::Type*>>& fields,
             const std::vector<ast::Attribute>& attrs = {},

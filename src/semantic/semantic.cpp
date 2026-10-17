@@ -47,9 +47,19 @@ symb_t::Symbol* resolve_qualified(
     }
 
     if (path.size() >= 2) {
-        auto* first_sym = symbols.lookup(path[0]);
-        if (first_sym && std::holds_alternative<quant::symb_t::EnumSymbol>(first_sym->data)) {
-            return symbols.lookup(path.back());
+        /* Enum::Variant` (possibly namespace-qualified): resolve the enum
+        first, then look the variant up in that enum only. Falling back to
+        a global bare-name lookup would return an unrelated enum's variant'
+        with the same name (or silently accept a nonexistent one)  */
+        std::vector<std::string> enum_path(path.begin(), path.end() - 1);
+        if (auto* enum_sym = resolve_qualified(symbols, enum_path)) {
+            if (auto* es = std::get_if<quant::symb_t::EnumSymbol>(&enum_sym->data)) {
+                auto it = es->variant_symbols.find(path.back());
+                if (it != es->variant_symbols.end()) {
+                    return it->second;
+                }
+                return nullptr;
+            }
         }
     }
 
@@ -1040,23 +1050,13 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                 }
             },
             [&](const ast::EnumDecl& enm) {
-                if (!ctx.symbols.declare_symbol(enm.name, symb_t::Symbol{
-                    enm.name,
-                    symb_t::EnumSymbol{ enm.variants },
-                    enm.attributes
-                })) {
+                if (!ctx.symbols.declare_enum(
+                        enm.name,
+                        enm.variants,
+                        enm.attributes,
+                        ctx.types.get_builtin(TypeKind::I32))) {
                     ctx.errors.add("Enum redeclaration: " + enm.name);
                     return;
-                }
-                for (size_t i = 0; i < enm.variants.size(); ++i) {
-                    ctx.symbols.declare_symbol(enm.variants[i], symb_t::Symbol{
-                        enm.variants[i],
-                        symb_t::VarSymbol{
-                            ctx.types.get_builtin(TypeKind::I32),
-                            false, true, static_cast<int64_t>(i)
-                        },
-                        {}
-                    });
                 }
             },
             [&](const ast::ModuleDecl&) {},
