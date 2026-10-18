@@ -41,9 +41,11 @@ def main():
     expected_err = 0
     unexpected_err = 0
     unexpected_ok = 0
+    unexpected_exitcode = 0
     skipped = 0
     unexpected_err_list = []
     unexpected_ok_list = []
+    unexpected_exitcode_list = []
 
     files = []
     for dirpath, _dirnames, filenames in os.walk(tests_dir):
@@ -87,12 +89,15 @@ def main():
                 unexpected_ok_list.append(rel_path)
             else:
                 pass_count += 1
-        else:
+        elif proc.returncode == 1:
             if base_name.endswith("_err"):
                 expected_err += 1
             else:
                 unexpected_err += 1
                 unexpected_err_list.append(rel_path)
+        else:
+            unexpected_exitcode += 1
+            unexpected_exitcode_list.append(rel_path)
 
     total = pass_count + expected_err + unexpected_err + unexpected_ok
 
@@ -108,6 +113,7 @@ def main():
     print(f"  Expected errors:   {expected_err}")
     print(f"  UNEXPECTED errors: {unexpected_err}")
     print(f"  UNEXPECTED passes: {unexpected_ok}")
+    print(f"  UNEXPECTED exit codes: {unexpected_ok}")
     print("========================================")
 
     if unexpected_err_list:
@@ -122,7 +128,13 @@ def main():
         for f in unexpected_ok_list:
             print(f"  - {f}")
 
-    if unexpected_err == 0 and unexpected_ok == 0:
+    if unexpected_exitcode:
+        print("")
+        print("Tests with exit code other than 0 or 1 (compiler crash):")
+        for f in unexpected_exitcode_list:
+            print(f"  - {f}")
+
+    if unexpected_err == 0 and unexpected_ok == 0 and unexpected_exitcode == 0:
         print("")
         print("All tests match expectations.")
         return 0

@@ -1,0 +1,6 @@
+enum TokenType { FACT };
+
+void main() {
+    TokenType::FACT; // works fine
+    FACT; // should cause an error
+}

@@ -1,0 +1,8 @@
+enum TokenType { PLUS, MINUS, NUMBER, FACT };
+enum OpType { PLUS, MULTIPLY, FACTORIAL };
+
+void formatTokenType(TokenType type) {}
+
+void main() {
+    formatTokenType(OpType::MULTIPLY);
+}

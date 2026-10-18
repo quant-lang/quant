@@ -1,0 +1,9 @@
+struct A {};
+
+struct Parser {
+    void sixseven()
+};
+
+void a(A a) {
+}
+
