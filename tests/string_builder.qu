@@ -1,0 +1,13 @@
+load "std::io";
+load "std::string";
+
+using std::string;
+
+void main() {
+    std::io::println(
+        makestr("hello world\n")
+        .add("my number: ")
+        .add(67 as str)
+        .cstr()
+    );
+}

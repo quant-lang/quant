@@ -13,9 +13,9 @@
 //   using std::string;
 //
 //   void main() {
-//       mut string s = string_make("hello");
-//       s.push_str(" world");
-//       s.push(33 as char);
+//       mut string s = makestr("hello")
+//          .add(" world")
+//          .add_char(33 as char);
 //       std::io::print(s.cstr());       // hello world!
 //       std::io::print(s.len() as str);  // 12
 //
@@ -27,7 +27,7 @@
 //   }
 //
 // Notes:
-//   - string_make copies; the source can be a literal or any NUL-terminated
+//   - makestr copies; the source can be a literal or any NUL-terminated
 //     buffer.
 //   - get and len are unchecked.
 //   - free must be called to release memory.
@@ -85,25 +85,27 @@ struct string {
         return true;
     }
 
-    // push - append a byte. The string is unchanged if the allocation fails.
-    void push(char c) {
+    // add_char - append a byte. The string is unchanged if the allocation fails.
+    &string add_char(char c) {
         if (!reserve(len + 1))
-            return;
+            return this;
         data[len] = c;
         len++;
         data[len] = 0;
+        return this;
     }
 
-    // push_str - append a NUL-terminated string.
+    // add - append a NUL-terminated string.
     // The string is unchanged if the allocation fails.
-    void push_str(str s) {
+    &string add(str s) {
         u64 n = str_len(s);
         if (!reserve(len + n))
-            return;
+            return this;
         for (mut u64 i = 0; i < n; i++)
             data[len + i] = s[i];
         len += n;
         data[len] = 0;
+        return this;
     }
 
     // sub - a new string with bytes [start, start + count).
@@ -134,7 +136,7 @@ struct string {
         for (mut u64 i = 0; i < len; i++)
             res.data[i] = data[i];
         res.len = len;
-        res.push_str(other);
+        res.add(other);
         return res;
     }
 
@@ -182,9 +184,9 @@ string string_empty() {
     return s;
 }
 
-// string_make - copy `src` into a fresh heap allocation.
+// makestr - copy `src` into a fresh heap allocation.
 // Returns an empty string when the allocation fails.
-string string_make(str src) {
+string makestr(str src) {
     mut string s = string_empty();
     u64 n = str_len(src);
     if (!s.reserve(n))

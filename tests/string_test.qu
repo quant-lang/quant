@@ -27,8 +27,8 @@ i32 main() {
     if (!expect(s[0] == (104 as char), "index"))
         return 1;
 
-    // string_make copies into a heap allocation
-    mut string a = string_make(s);
+    // makestr copies into a heap allocation
+    mut string a = makestr(s);
     if (!expect(a.len() == 5, "copy len"))
         return 1;
     if (!expect(a.data != s, "alias"))
@@ -38,9 +38,9 @@ i32 main() {
     if (!expect(a.eq("hello"), "copy eq"))
         return 1;
 
-    // push and push_str grow the buffer past the initial capacity
-    a.push_str(" world");
-    a.push(33 as char);
+    // push and add grow the buffer past the initial capacity
+    a.add(" world");
+    a.add_char(33 as char);
     if (!expect(a.len() == 12, "push len"))
         return 1;
     if (!expect(a.eq("hello world!"), "push eq"))
@@ -69,7 +69,7 @@ i32 main() {
         return 1;
 
     // an empty string owns no memory
-    string empty = string_make("");
+    string empty = makestr("");
     if (!expect(empty.is_empty(), "empty"))
         return 1;
     if (!expect(empty.len() == 0, "empty len"))
@@ -83,7 +83,7 @@ i32 main() {
     a.free();
 
     // free resets the string, so it can be filled again
-    a.push(65 as char);
+    a.add_char(65 as char);
     if (!expect(a.eq("A"), "reuse"))
         return 1;
     a.free();
