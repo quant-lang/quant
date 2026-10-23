@@ -31,63 +31,66 @@ struct GenericFuncDef {
 };
 
 class TypeContext {
-public:
-    const Type* get_builtin(TypeKind kind);
-    const Type* get_struct(const std::string& name);
-    const Type* get_pointer(const Type* base) const;
-    const Type* get_reference(const Type* base) const;
-    const Type* get_generic_param(const std::string& name);
-    const Type* get_generic_instantiation(const std::string& name, const std::vector<const Type*>& args);
-    const Type* get_deferred_generic(const std::string& name, const std::vector<const Type*>& args) const;
-    bool is_mangled_name(const std::string& mangled, std::string& out_base) const;
-    bool try_instantiate(const std::string& mangled, const std::vector<const Type*>& type_args);
+    public:
+        const Type* get_builtin(TypeKind kind);
+        const Type* get_struct(const std::string& name);
+        const ast::Type* get_enum(const std::string& name);
+        const Type* get_pointer(const Type* base) const;
+        const Type* get_reference(const Type* base) const;
+        const Type* get_generic_param(const std::string& name);
+        const Type* get_generic_instantiation(const std::string& name, const std::vector<const Type*>& args);
+        const Type* get_deferred_generic(const std::string& name, const std::vector<const Type*>& args) const;
 
-    void register_struct(const std::string& name,
-        const std::vector<std::pair<std::string, const Type*>>& fields,
-        const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
+        bool is_mangled_name(const std::string& mangled, std::string& out_base) const;
+        bool try_instantiate(const std::string& mangled, const std::vector<const Type*>& type_args);
 
-    void register_generic_struct(const std::string& name, const GenericStructDef& def);
+        void register_struct(const std::string& name,
+            const std::vector<std::pair<std::string, const Type*>>& fields,
+            const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
 
-    void register_generic_func(const std::string& name, const GenericFuncDef& def);
-    const GenericFuncDef* get_generic_func(const std::string& name) const;
-    const std::unordered_map<std::string, GenericFuncDef>& get_all_generic_funcs() const { return generic_func_defs; }
-    const GenericStructDef* get_generic_struct(const std::string& name) const;
+        void register_generic_struct(const std::string& name, const GenericStructDef& def);
 
-    const Type* substitute_type(const Type* type, const std::unordered_map<std::string, const Type*>& subst) const;
-    ast::FuncArg substitute_func_arg(const ast::FuncArg& arg, const std::unordered_map<std::string, const Type*>& subst) const;
-    std::string mangle_func_name(const std::string& name, const std::vector<const Type*>& args) const;
+        void register_generic_func(const std::string& name, const GenericFuncDef& def);
+        const GenericFuncDef* get_generic_func(const std::string& name) const;
+        const std::unordered_map<std::string, GenericFuncDef>& get_all_generic_funcs() const { return generic_func_defs; }
+        const GenericStructDef* get_generic_struct(const std::string& name) const;
 
-    const std::vector<std::pair<std::string, const Type*>>* get_struct_fields(const std::string& name) const;
+        const Type* substitute_type(const Type* type, const std::unordered_map<std::string, const Type*>& subst) const;
+        ast::FuncArg substitute_func_arg(const ast::FuncArg& arg, const std::unordered_map<std::string, const Type*>& subst) const;
+        std::string mangle_func_name(const std::string& name, const std::vector<const Type*>& args) const;
 
-    const std::vector<std::vector<ast::Attribute>>* get_struct_field_attrs(const std::string& name) const;
+        const std::vector<std::pair<std::string, const Type*>>* get_struct_fields(const std::string& name) const;
 
-    int get_field_index(const std::string& struct_name, const std::string& field) const;
+        const std::vector<std::vector<ast::Attribute>>* get_struct_field_attrs(const std::string& name) const;
 
-    const Type* get_field_type(const std::string& struct_name, const std::string& field) const;
+        int get_field_index(const std::string& struct_name, const std::string& field) const;
 
-    const ast::Expr* get_field_default_value(const std::string& struct_name, const std::string& field_name) const;
+        const Type* get_field_type(const std::string& struct_name, const std::string& field) const;
 
-    int type_size(const Type* t) const;
+        const ast::Expr* get_field_default_value(const std::string& struct_name, const std::string& field_name) const;
 
-    TypeContext();
+        int type_size(const Type* t) const;
 
-private:
-    std::array<Type, (size_t)TypeKind::Count> builtin_types;
-    mutable std::unordered_map<std::string, Type> struct_types;
-    mutable std::unordered_map<const Type*, Type> pointer_cache;
-    mutable std::unordered_map<const Type*, Type> reference_cache;
-    std::unordered_map<std::string, Type> generic_param_types;
+        TypeContext();
 
-    std::unordered_map<
-        std::string,
-        std::vector<std::pair<std::string, const Type*>>
-    > structs;
+    private:
+        std::array<Type, (size_t)TypeKind::Count> builtin_types;
+        mutable std::unordered_map<std::string, Type> struct_types;
+        mutable std::unordered_map<std::string, Type> enum_types;
+        mutable std::unordered_map<const Type*, Type> pointer_cache;
+        mutable std::unordered_map<const Type*, Type> reference_cache;
+        std::unordered_map<std::string, Type> generic_param_types;
 
-    std::unordered_map<std::string, std::vector<std::vector<ast::Attribute>>> struct_field_attrs_map;
+        std::unordered_map<
+            std::string,
+            std::vector<std::pair<std::string, const Type*>>
+        > structs;
 
-    std::unordered_map<std::string, GenericStructDef> generic_defs;
-    std::unordered_map<std::string, GenericFuncDef> generic_func_defs;
-    mutable std::unordered_map<std::string, std::string> mangled_to_base;
-};
+        std::unordered_map<std::string, std::vector<std::vector<ast::Attribute>>> struct_field_attrs_map;
+
+        std::unordered_map<std::string, GenericStructDef> generic_defs;
+        std::unordered_map<std::string, GenericFuncDef> generic_func_defs;
+        mutable std::unordered_map<std::string, std::string> mangled_to_base;
+    };
 
 }

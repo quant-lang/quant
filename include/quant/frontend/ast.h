@@ -49,6 +49,8 @@ namespace quant::ast {
 
         Generic,
 
+        Enum,
+
         Count
     };
 

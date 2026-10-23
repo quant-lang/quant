@@ -239,6 +239,7 @@ namespace quant::symb_t {
                                    const ast::Type* variant_type) {
         EnumSymbol sym;
         sym.variant_names = variants;
+        sym.type = variant_type;
 
         for (size_t i = 0; i < variants.size(); ++i) {
             if (sym.variant_symbols.contains(variants[i])) {
@@ -252,16 +253,6 @@ namespace quant::symb_t {
 
         if (!declare_symbol(enum_name, Symbol{enum_name, std::move(sym), attrs})) {
             return false;
-        }
-
-        // Bare-name access: variants are visible without the enum qualifier.
-        // First declaration wins, matching the documented enum semantics.
-        for (size_t i = 0; i < variants.size(); ++i) {
-            declare_symbol(variants[i], Symbol{
-                variants[i],
-                VarSymbol{variant_type, false, true, static_cast<int64_t>(i)},
-                {}
-            });
         }
 
         return true;

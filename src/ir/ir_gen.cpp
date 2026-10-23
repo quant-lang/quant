@@ -5,6 +5,7 @@
 
 #include "quant/ir/ir_gen.h"
 #include "quant/attributes/attributes.h"
+#include "quant/frontend/ast.h"
 #include "quant/support/symbol_path.h"
 #include "utils/logger.h"
 
@@ -71,7 +72,8 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
         case ast::TypeKind::U16:  return 2;
         case ast::TypeKind::F32:
         case ast::TypeKind::I32:
-        case ast::TypeKind::U32:  return 4;
+        case ast::TypeKind::U32:
+        case ast::TypeKind::Enum: return 4;
         case ast::TypeKind::F64:
         case ast::TypeKind::I64:
         case ast::TypeKind::U64:  return 8;
@@ -1558,10 +1560,18 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::BinaryExpr& node) -> uint32_t {
-            ast::TypeKind lhs_kind = node.lhs && node.lhs->resolved_type
-                ? node.lhs->resolved_type->kind : ast::TypeKind::I32;
-            ast::TypeKind rhs_kind = node.rhs && node.rhs->resolved_type
-                ? node.rhs->resolved_type->kind : lhs_kind;
+            auto operand_kind = [](const ast::Expr* expr, ast::TypeKind fallback) {
+                if (!expr || !expr->resolved_type) {
+                    return fallback;
+                }
+                const ast::TypeKind kind = expr->resolved_type->kind;
+
+                // Enums use i32 as their runtime representation.
+                return kind == ast::TypeKind::Enum ? ast::TypeKind::I32 : kind;
+            };
+
+            const ast::TypeKind lhs_kind = operand_kind(node.lhs, ast::TypeKind::I32);
+            const ast::TypeKind rhs_kind = operand_kind(node.rhs, lhs_kind);
             const ast::TypeKind common = binary_common_kind(lhs_kind, rhs_kind);
 
             // Widen each operand to the common type before the operation.

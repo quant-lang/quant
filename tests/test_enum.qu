@@ -10,7 +10,7 @@ enum Status {
 void main() {
     i32 s1 = Status::Ok;
     i32 s2 = Status::Error;
-    i32 s3 = Unknown;
+    i32 s3 = Status::Unknown;
 
     std::io::print(s1 as str);
     std::io::print(" ");

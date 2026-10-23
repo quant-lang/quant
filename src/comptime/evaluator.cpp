@@ -794,7 +794,8 @@ bool Evaluator::substitute_literal(ast::Expr* expr, const Value& value) {
             return false;
         }
         expr->kind = ast::BoolExpr{ *b };
-    } else if (is_int_kind(t->kind)) {
+    } else if (is_int_kind(t->kind) ||
+               t->kind == ast::TypeKind::Enum) {
         auto i = value_int(value);
         if (!i) {
             ctx.errors.add(expr->loc, "compile-time expression produced a non-integer value");

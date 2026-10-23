@@ -1,4 +1,5 @@
 #include "quant/support/type_context.h"
+#include <string>
 
 namespace quant::types {
 
@@ -11,6 +12,8 @@ namespace {
                 out += t->struct_name;
             } else if (t->kind == TypeKind::Generic) {
                 out += t->struct_name;
+            } else if (t->kind == TypeKind::Enum) {
+                out += "enum_" + t->struct_name;
             } else {
                 out += std::to_string((int)t->kind);
             }
@@ -53,6 +56,18 @@ namespace {
         t.struct_name = name;
 
         auto [iter, _] = struct_types.emplace(name, std::move(t));
+        return &iter->second;
+    }
+    const Type* TypeContext::get_enum(const std::string& name){
+        auto it = enum_types.find(name);
+        if (it != enum_types.end())
+            return &it->second;
+
+        Type t;
+        t.kind = TypeKind::Enum;
+        t.struct_name = name;
+
+        auto [iter, _] = enum_types.emplace(name, std::move(t));
         return &iter->second;
     }
 
@@ -291,7 +306,8 @@ namespace {
             case TypeKind::U16:  return 2;
             case TypeKind::F32:
             case TypeKind::I32:
-            case TypeKind::U32:  return 4;
+            case TypeKind::U32:
+            case TypeKind::Enum: return 4;
             case TypeKind::F64:
             case TypeKind::I64:
             case TypeKind::U64:  return 8;

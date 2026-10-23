@@ -51,6 +51,7 @@ namespace quant::symb_t {
         std::vector<std::string> variant_names;
         // Variant name -> symbol for this enum only
         std::unordered_map<std::string, Symbol*> variant_symbols;
+        const ast::Type* type = nullptr;
     };
     using SymbolData = std::variant<
         VarSymbol,

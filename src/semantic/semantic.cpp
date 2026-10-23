@@ -124,6 +124,9 @@ bool types_equal(const ast::Type* a, const ast::Type* b) {
     if (a->kind == ast::TypeKind::Struct) {
         return a->struct_name == b->struct_name;
     }
+    if (a->kind == ast::TypeKind::Enum) {
+        return a->struct_name == b->struct_name;
+    }
     if (a->kind == ast::TypeKind::Pointer){
         return types_equal(a->pointed, b->pointed);
     }
@@ -170,7 +173,9 @@ bool can_widen(const ast::Type* to, const ast::Type* from) {
     if (!to || !from) return false;
     if (types_equal(to, from)) return true;
 
-    const auto kf = from->kind;
+    const auto kf = from->kind == TypeKind::Enum
+        ? TypeKind::I32
+        : from->kind;
     const auto kt = to->kind;
     if (!is_numeric_kind(kf) || !is_numeric_kind(kt)) return false;
 
@@ -873,12 +878,21 @@ const ast::Type* SemanticAnalyzer::canonicalize_struct_type(const ast::Type* typ
         auto dollar = base.find('$');
         if (dollar != std::string::npos) base = base.substr(0, dollar);
     }
+    auto* sym = lookup_struct(ctx, base);
+
+    if (sym) {
+        if (const auto* es =  std::get_if<symb_t::EnumSymbol>(&sym->data)) {
+            return es->type;
+        }
+    }
+    // Keep the existing handling for qualified structs.
     if (base.find("::") != std::string::npos) {
-        if (args_changed) return ctx.types.get_deferred_generic(base, new_args);
+        if (args_changed) {
+            return ctx.types.get_deferred_generic(base, new_args);
+        }
         return type;
     }
 
-    auto* sym = lookup_struct(ctx, base);
     if (!sym || sym->owning_module.empty()) {
         if (args_changed) return ctx.types.get_deferred_generic(base, new_args);
         return type;
@@ -1050,11 +1064,15 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                 }
             },
             [&](const ast::EnumDecl& enm) {
+                const ast::Type* enum_type = ctx.types.get_enum(
+                    full_qualified(module_namespace, namespace_path, enm.name)
+                );
+
                 if (!ctx.symbols.declare_enum(
                         enm.name,
                         enm.variants,
                         enm.attributes,
-                        ctx.types.get_builtin(TypeKind::I32))) {
+                        enum_type)) {
                     ctx.errors.add("Enum redeclaration: " + enm.name);
                     return;
                 }
@@ -1633,8 +1651,8 @@ void SemanticAnalyzer::analyze_switch(ast::SwitchStmt& stmt) {
     if (!cond_type) return;
 
     auto is_switchable = [](TypeKind k) {
-        // Bool, I8..I64, U8..U64 (char is an alias for u8)
-        return k >= TypeKind::Bool && k <= TypeKind::U64;
+        return k == TypeKind::Enum ||
+               (k >= TypeKind::Bool && k <= TypeKind::U64);
     };
     if (!is_switchable(cond_type->kind)) {
         ctx.errors.add(stmt.condition->loc, "Switch expression must be an integer, bool, or char type");
@@ -2244,7 +2262,9 @@ const ast::Type* SemanticAnalyzer::analyze_field(const ast::FieldExpr& node) {
 
 namespace {
     bool is_builtin_type_kind(ast::TypeKind k) {
-        return k != ast::TypeKind::Struct && k != ast::TypeKind::Generic;
+        return k != ast::TypeKind::Struct
+            && k != ast::TypeKind::Generic
+            && k != ast::TypeKind::Enum;
     }
 }
 
@@ -2262,17 +2282,25 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b, cons
         }
         return ctx.types.get_builtin(TypeKind::Bool);
     }
+    const ast::Type* i32_type = ctx.types.get_builtin(TypeKind::I32);
 
+    if (l->kind == TypeKind::Enum && is_numeric_kind(r->kind)) {
+        l = i32_type;
+    }
+
+    if (r->kind == TypeKind::Enum && is_numeric_kind(l->kind)) {
+        r = i32_type;
+    }
     // Numeric operands: use the usual arithmetic conversions
     if (is_numeric_kind(l->kind) && is_numeric_kind(r->kind)) {
         if (l->kind != r->kind) {
-            // Adapt a literal operand to the typed operand where the value fits
-            if (is_int_literal(b.lhs) || is_float_literal(b.lhs))
-                try_adapt_literal(r, b.lhs);
-            else if (is_int_literal(b.rhs) || is_float_literal(b.rhs))
-                try_adapt_literal(l, b.rhs);
-            l = b.lhs->resolved_type;
-            r = b.rhs->resolved_type;
+            if ((is_int_literal(b.lhs) || is_float_literal(b.lhs)) &&
+                try_adapt_literal(r, b.lhs)) {
+                l = b.lhs->resolved_type;
+            } else if ((is_int_literal(b.rhs) || is_float_literal(b.rhs)) &&
+                       try_adapt_literal(l, b.rhs)) {
+                r = b.rhs->resolved_type;
+            }
         }
 
         const ast::Type* common = common_type(ctx, l, r);
@@ -2905,7 +2933,8 @@ int type_size(const ast::Type* t) {
         case ast::TypeKind::U16:  return 2;
         case ast::TypeKind::F32:
         case ast::TypeKind::I32:
-        case ast::TypeKind::U32:  return 4;
+        case ast::TypeKind::U32:
+        case ast::TypeKind::Enum: return 4;
         case ast::TypeKind::F64:
         case ast::TypeKind::I64:
         case ast::TypeKind::U64:  return 8;

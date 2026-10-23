@@ -28,6 +28,7 @@ const char* type_name(ast::TypeKind kind) {
         case ast::TypeKind::U64:       return "u64";
         case ast::TypeKind::F32:       return "f32";
         case ast::TypeKind::F64:       return "f64";
+        case ast::TypeKind::Enum:      return "enum";
         case ast::TypeKind::Struct:    return "struct";
         case ast::TypeKind::Pointer:   return "ptr";
         case ast::TypeKind::Reference: return "ref";
