@@ -796,6 +796,15 @@ ast::FuncStmt Parser::parse_func(bool is_extern, const char* struct_name,
     ret.struct_name = std::move(struct_name);
 
     const auto* saved_type_params = current_type_params;
+    // `eff_params` may point at `combined_params`, which lives only for this
+    // call. Restore the previous pointer on every path, including parse errors,
+    // so recovery never leaves current_type_params dangling.
+    struct RestoreTypeParams {
+        const std::vector<std::string>*& slot;
+        const std::vector<std::string>* saved;
+        ~RestoreTypeParams() { slot = saved; }
+    } 
+    restore_type_params{current_type_params, saved_type_params};
     current_type_params = eff_params;
 
     expect(TOKEN_LPAREN, "Expected '('");
@@ -808,8 +817,6 @@ ast::FuncStmt Parser::parse_func(bool is_extern, const char* struct_name,
     } else {
         expect(TOKEN_SEMICOLON, "Expected ';' after function declaration");
     }
-
-    current_type_params = saved_type_params;
 
     return ret;
 }

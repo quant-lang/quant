@@ -391,6 +391,11 @@ std::vector<uint8_t> write(const mc::Object& obj, uint64_t image_base) {
     out.pad_to(rodata_off);
     out.bytes(obj.rodata.data(), obj.rodata.size());
 
+    // The section header advertises the aligned .rodata size, so the file must
+    // contain those trailing zero bytes too. Otherwise Windows rejects the
+    // image with WinError 193 because the last section extends past EOF.
+    out.pad_to(static_cast<std::size_t>(rodata_off) + rodata_size);
+
     return std::move(out.data);
 }
 
