@@ -171,8 +171,8 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 * [x] Fix Windows `.exe` files that are shorter than their `.rodata` section. `src/backend/pe_writer.cpp` writes the aligned `.rodata` size in the header but does not pad the last section. Windows then fails with `WinError 193`. Reproduce with `tests/else_if_str_test.qu -O0` or `tests/main.qu -O2`. This also breaks `scripts/check_opt.py` and `scripts/check_comptime.py`.
 * [ ] Use one diagnostic format everywhere: show the location and source token first, then the message.
 * [ ] Show the source token in every error. Improve unclear messages, for example "Undefined qualified symbol" should say which symbol was not found.
-* [ ] Unify all type mismatch errors. Always show the expected and received types.
-* [ ] Stop printing internal type IDs. Bad examples: `Type mismatch in assignment: Node vs 4` and `14 vs 4`.
+* [x] Unify all type mismatch errors. Always show the expected and received types.
+* [x] Stop printing internal type IDs. Bad examples: `Type mismatch in assignment: Node vs 4` and `14 vs 4`.
 * [ ] Fix the wrong error for an undefined variable used as the right-hand side of a variable initializer.
 * [ ] Keep reporting independent semantic errors. For example, "Cannot assign to immutable variable" must not hide "Missing return in non-void function".
 

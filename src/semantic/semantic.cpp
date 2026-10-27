@@ -98,6 +98,27 @@ std::string generic_key(const std::vector<std::string>& ns_path,
     }
     return name;
 }
+std::string expected_and_got(quant::CompilerContext& ctx,
+                             const ast::Type* expected,
+                             const ast::Type* got) {
+    return "expected " + (expected ? expected->to_string(ctx) : std::string("unknown")) +
+           ", got " + (got ? got->to_string(ctx) : std::string("unknown"));
+}
+
+std::string type_mismatch_error(const std::string& context,
+                                quant::CompilerContext& ctx,
+                                const ast::Type* expected,
+                                const ast::Type* got) {
+    return "Type mismatch in " + context + ": " + expected_and_got(ctx, expected, got);
+}
+
+std::string literal_range_error(const std::string& context,
+                                quant::CompilerContext& ctx,
+                                const ast::Type* expected,
+                                const ast::Type* got) {
+    return "Literal value does not fit in " + context + ": " +
+           expected_and_got(ctx, expected, got);
+}
 
 } // namespace
 
@@ -1263,10 +1284,11 @@ void SemanticAnalyzer::analyze_var_decl(ast::VarDecl& var) {
         AssignCheck chk = check_assignable_value(ctx, resolved_type, var.value);
         if (chk != AssignCheck::Ok) {
             if (chk == AssignCheck::NullPtrToReference) return; // already reported
+            const std::string context = "variable initialization of '" + var.name + "'";
             if (chk == AssignCheck::LiteralOutOfRange)
-                ctx.errors.add(var.value->loc, "Literal value does not fit in type " + resolved_type->to_string(ctx) + ": " + var.name);
+                ctx.errors.add(var.value->loc, literal_range_error(context, ctx, resolved_type, value_type));
             else
-                ctx.errors.add(var.value->loc, "Type mismatch in variable initialization: " + var.name);
+                ctx.errors.add(var.value->loc, type_mismatch_error(context, ctx, resolved_type, value_type));
             return;
         }
     } else if (!var.is_mut && !has_init) {
@@ -1366,11 +1388,11 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
             AssignCheck chk = check_assignable_value(ctx, field.type, field.default_value);
             if (chk == AssignCheck::NullPtrToReference) return; // already reported
             if (chk == AssignCheck::LiteralOutOfRange) {
-                ctx.errors.add("Literal value does not fit in field type: " + field.name);
+                ctx.errors.add(literal_range_error("field default value for '" + field.name + "'", ctx, field.type, dt));
                 return;
             }
             if (chk != AssignCheck::Ok) {
-                ctx.errors.add("Type mismatch in field default value: " + field.name);
+                ctx.errors.add(type_mismatch_error("field default value for '" + field.name + "'", ctx, field.type, dt));
                 return;
             }
         }
@@ -1416,9 +1438,9 @@ void SemanticAnalyzer::analyze_return(const ast::ReturnStmt& ret) {
         AssignCheck chk = check_assignable_value(ctx, current_function_return_type, ret.value);
         if (chk == AssignCheck::NullPtrToReference) return; // already reported
         if (chk == AssignCheck::LiteralOutOfRange)
-            ctx.errors.add(ret.value->loc, std::format("Literal value does not fit in return type {}", current_function_return_type->to_string(ctx)));
+            ctx.errors.add(ret.value->loc, literal_range_error("return type", ctx, current_function_return_type, value_type));
         else if (chk != AssignCheck::Ok)
-            ctx.errors.add(ret.value->loc, std::format("Return type mismatch, expected: {}, got: {}", current_function_return_type->to_string(ctx), value_type->to_string(ctx)));
+            ctx.errors.add(ret.value->loc, type_mismatch_error("return type", ctx, current_function_return_type, value_type));
         if (chk != AssignCheck::Ok) return;
     }
 }
@@ -1637,7 +1659,8 @@ void SemanticAnalyzer::check_condition(const ast::Expr* condition, const std::st
     if (!cond_type) return;
 
     if (cond_type->kind != TypeKind::Bool) {
-        ctx.errors.add(condition->loc, what + " condition must be bool, got: " + cond_type->to_string(ctx));
+        ctx.errors.add(condition->loc, type_mismatch_error(what + " condition", ctx,
+                                                           ctx.types.get_builtin(TypeKind::Bool), cond_type));
     }
 }
 
@@ -1684,9 +1707,9 @@ void SemanticAnalyzer::analyze_switch(ast::SwitchStmt& stmt) {
             }
             AssignCheck chk = check_assignable_value(ctx, cond_type, v);
             if (chk == AssignCheck::LiteralOutOfRange)
-                ctx.errors.add(v->loc, "Case value does not fit in switch expression type");
+                ctx.errors.add(v->loc, literal_range_error("switch case", ctx, cond_type, case_type));
             else if (chk == AssignCheck::Mismatch)
-                ctx.errors.add(v->loc, "Case value type mismatch with switch expression");
+                ctx.errors.add(v->loc, type_mismatch_error("switch case", ctx, cond_type, case_type));
 
             // A mutable variable is not a compile-time constant
             bool is_mutable_var = false;
@@ -2097,11 +2120,13 @@ const ast::Type* SemanticAnalyzer::analyze_method_call(const ast::CallExpr& call
         check_arg_guard(arg, qualified);
 
         AssignCheck chk = check_assignable_value(ctx, fn->arg_types[i], arg);
+        const std::string context = "argument " + std::to_string(i + 1) +
+                                    " in method call to '" + qualified + "'";
         if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
         if (chk == AssignCheck::LiteralOutOfRange)
-            ctx.errors.add("Literal argument does not fit in parameter type in method call: " + qualified);
+            ctx.errors.add(literal_range_error(context, ctx, fn->arg_types[i], arg_type));
         else if (chk != AssignCheck::Ok)
-            ctx.errors.add("Argument type mismatch in method call: " + qualified);
+            ctx.errors.add(type_mismatch_error(context, ctx, fn->arg_types[i], arg_type));
         if (chk != AssignCheck::Ok) return nullptr;
     }
 
@@ -2208,12 +2233,10 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg) {
     AssignCheck chk = check_assignable_value(ctx, target_type, asg.value);
     if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
     if (chk != AssignCheck::Ok) {
-        std::string tname = target_type ? (target_type->kind == TypeKind::Struct ? target_type->struct_name : (target_type->kind == TypeKind::Generic ? "Generic:" + target_type->struct_name : std::to_string((int)target_type->kind))) : "null";
-        std::string vname = value_type ? (value_type->kind == TypeKind::Struct ? value_type->struct_name : (value_type->kind == TypeKind::Generic ? "Generic:" + value_type->struct_name : std::to_string((int)value_type->kind))) : "null";
         if (chk == AssignCheck::LiteralOutOfRange)
-            ctx.errors.add("Literal value does not fit in assignment: " + tname + " vs " + vname);
+            ctx.errors.add(literal_range_error("assignment", ctx, target_type, value_type));
         else
-            ctx.errors.add("Type mismatch in assignment: " + tname + " vs " + vname);
+            ctx.errors.add(type_mismatch_error("assignment", ctx, target_type, value_type));
         return nullptr;
     }
 
@@ -2334,7 +2357,7 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b, cons
         return nullptr;
     }
 
-    ctx.errors.add(expr->loc, "Type mismatch in binary expression");
+    ctx.errors.add(expr->loc, type_mismatch_error("binary expression", ctx, l, r));
     return nullptr;
 }
 
@@ -2698,11 +2721,13 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
             check_arg_guard(arg, mangled);
 
             AssignCheck chk = check_assignable_value(ctx, concrete_fn->arg_types[i], arg);
+            const std::string context = "argument " + std::to_string(i + 1) +
+                                        " in generic call to '" + func_name + "'";
             if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
             if (chk == AssignCheck::LiteralOutOfRange)
-                ctx.errors.add("Literal argument does not fit in parameter type in generic call: " + func_name);
+                ctx.errors.add(literal_range_error(context, ctx, concrete_fn->arg_types[i], arg_type));
             else if (chk != AssignCheck::Ok)
-                ctx.errors.add("Argument type mismatch in generic call: " + func_name);
+                ctx.errors.add(type_mismatch_error(context, ctx, concrete_fn->arg_types[i], arg_type));
             if (chk != AssignCheck::Ok) return nullptr;
         }
 
@@ -2746,11 +2771,13 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         check_arg_guard(arg, support::join_namespace(path));
 
         AssignCheck chk = check_assignable_value(ctx, fn->arg_types[i], arg);
+        const std::string context = "argument " + std::to_string(i + 1) +
+                                    " in call to '" + support::join_namespace(path) + "'";
         if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
         if (chk == AssignCheck::LiteralOutOfRange)
-            ctx.errors.add("Literal argument does not fit in parameter type in call: " + support::join_namespace(path));
+            ctx.errors.add(literal_range_error(context, ctx, fn->arg_types[i], arg_type));
         else if (chk != AssignCheck::Ok)
-            ctx.errors.add("Argument type mismatch in call: " + support::join_namespace(path));
+            ctx.errors.add(type_mismatch_error(context, ctx, fn->arg_types[i], arg_type));
         if (chk != AssignCheck::Ok) return nullptr;
     }
 
@@ -2858,13 +2885,14 @@ const ast::Type* SemanticAnalyzer::analyze_struct_init(const ast::StructInitExpr
         if (!arg_type) return nullptr;
 
         AssignCheck chk = check_assignable_value(ctx, ss->field_types[i], node.args[i]);
+        const std::string context = "struct init field '" + ss->field_names[i] + "'";
         if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
         if (chk == AssignCheck::LiteralOutOfRange)
             ctx.errors.add(node.args[i]->loc,
-                "Literal value does not fit in struct init field '" + ss->field_names[i] + "'");
+                literal_range_error(context, ctx, ss->field_types[i], arg_type));
         else if (chk != AssignCheck::Ok)
             ctx.errors.add(node.args[i]->loc,
-                "Type mismatch in struct init field '" + ss->field_names[i] + "'");
+                type_mismatch_error(context, ctx, ss->field_types[i], arg_type));
         if (chk != AssignCheck::Ok) return nullptr;
     }
 

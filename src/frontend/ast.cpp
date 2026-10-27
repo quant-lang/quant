@@ -5,6 +5,16 @@
 using namespace ast;
 
 std::string Type::to_string(quant::CompilerContext& ctx) const {
+    // Diagnostics show the type as written, not its internal qualified or
+    // mangled name (e.g. `tests::main::Node` or `Vec$4`).
+    auto display_name = [](std::string name) {
+        auto dollar = name.find('$');
+        if (dollar != std::string::npos) name.resize(dollar);
+        auto colon = name.rfind("::");
+        if (colon != std::string::npos) name.erase(0, colon + 2);
+        return name;
+    };
+
     switch (kind) {
         case TypeKind::Void:      return "void";
         case TypeKind::Bool:      return "bool";
@@ -29,12 +39,7 @@ std::string Type::to_string(quant::CompilerContext& ctx) const {
             if (ctx.types.is_mangled_name(base, unmangled)) {
                 base = unmangled;
             }
-            else {
-                auto dollar = base.find('$');
-                if (dollar != std::string::npos) {
-                    base = base.substr(0, dollar);
-                }
-            }
+            base = display_name(base);
 
             if (!type_args.empty()) {
                 std::ostringstream oss;
@@ -54,11 +59,11 @@ std::string Type::to_string(quant::CompilerContext& ctx) const {
             return base;
         }
 
-        case TypeKind::Pointer:   return "*" + pointed->to_string(ctx);
-        case TypeKind::Reference: return "&" + pointed->to_string(ctx);
-        case TypeKind::Enum:      return struct_name;
+        case TypeKind::Pointer:   return pointed ? "*" + pointed->to_string(ctx) : "*unknown";
+        case TypeKind::Reference: return pointed ? "&" + pointed->to_string(ctx) : "&unknown";
+        case TypeKind::Enum:      return display_name(struct_name);
         case TypeKind::NullPtr:   return "nullptr";
-        case TypeKind::Generic:   return "generic";
+        case TypeKind::Generic:   return struct_name.empty() ? "generic" : struct_name;
 
         case TypeKind::Count:     return "count";
     }
