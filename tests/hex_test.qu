@@ -1,0 +1,6 @@
+load "std::io";
+
+@entry i32 main(){
+   i64 x = 0xF2800000;
+   std::io::print(x);
+}

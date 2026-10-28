@@ -1,5 +1,8 @@
+#include <cmath>
 #include <functional>
 #include <iostream>
+#include <string>
+#include <string_view>
 #include <vector>
 #include <algorithm>
 #include <cctype>
@@ -11,9 +14,13 @@
 constexpr unsigned int str_hash(const char* str, int h = 0){
     return !str[h] ? 5381 : (str_hash(str, h + 1) * 33) ^ str[h];
 }
-
 namespace quant::lx {
-
+    static int digit_value(char c) {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return 99;
+    }
     char Lexer::peek() {
         if (pos >= buffer.size()) return '\0';
         return buffer[pos];
@@ -55,6 +62,11 @@ namespace quant::lx {
         char c = advance();
 
         if (std::isdigit((unsigned char)c)) {
+            if (c == '0') {
+                if (match('x') || match('X')) return radix_number(16);
+                if (match('b') || match('B')) return radix_number(2);
+                if (match('o') || match('O')) return radix_number(8);
+            }
             return number();
         } else if (std::isalpha((unsigned char)c) || c == '_') {
             return identifier();
@@ -145,40 +157,98 @@ namespace quant::lx {
             {ctx.srcloc.file, token_line, token_column, static_cast<int>(pos - start)}
         };
     }
-    Token Lexer::make_number() {
-        Token tok = make_token(TOKEN_NUMBER);
-        std::string text = std::string(buffer.data() + start, pos - start);
-        tok.number = std::stod(text);
-        tok.inum = std::strtoull(text.c_str(), nullptr, 10);
+    #include <cerrno>
+
+    Token Lexer::make_int(uint64_t v) {
+        Token tok = make_token(TOKEN_INT);
+        tok.inum = v;
+        return tok;
+    }
+
+    Token Lexer::make_float(double v) {
+        Token tok = make_token(TOKEN_FLOAT);
+        tok.number = v;
+        return tok;
+    }
+
+    Token Lexer::radix_number(int base) {
+        uint64_t value = 0;
+        int digits = 0;
+        bool overflow = false;
+
+        while (true) {
+            char c = peek();
+            if (c == '_') {
+                advance();
+                continue;
+            }
+
+            if (!std::isalnum((unsigned char)c))
+                break;
+
+            int d = digit_value(c);
+            if (d >= base) {
+                while (std::isalnum((unsigned char)peek()) || peek() == '_')
+                    advance();
+                return make_token(TOKEN_ILLEGAL);
+            }
+
+            if (value > (UINT64_MAX - d) / base) overflow = true;
+            value = value * base + d;
+            digits++;
+            advance();
+        }
+
+        if (digits == 0 || overflow) return make_token(TOKEN_ILLEGAL);
+
+        Token tok = make_int(value);
+        tok.inum = value;
+        tok.number = static_cast<double>(value);
         return tok;
     }
     Token Lexer::number() {
-        while (std::isdigit((unsigned char)peek())) {
-            advance();
-        }
+        bool is_float = false;
+
+        while (std::isdigit((unsigned char)peek()) || peek() == '_') advance();
 
         if (peek() == '.' && pos + 1 < buffer.size() &&
             std::isdigit((unsigned char)buffer[pos + 1])) {
+            is_float = true;
             advance();
-
-            while (std::isdigit((unsigned char)peek())) {
+            while (std::isdigit((unsigned char)peek()) || peek() == '_')
                 advance();
-            }
         }
 
         if (peek() == 'e' || peek() == 'E') {
+            is_float = true;
             advance();
 
-            if (peek() == '+' || peek() == '-') {
+            if (peek() == '+' || peek() == '-')
                 advance();
-            }
 
-            while (std::isdigit((unsigned char)peek())) {
-                advance();
+            if (!std::isdigit((unsigned char)peek())) {
+                return make_token(TOKEN_ILLEGAL);   // 1e, 1e+
             }
+            while (std::isdigit((unsigned char)peek()))
+                advance();
         }
 
-        return make_number();
+        std::string text;
+        for (size_t i = start; i < pos; i++)
+            if (buffer[i] != '_')
+                text.push_back(buffer[i]);
+
+        if (is_float) {
+            return make_float(std::stod(text));
+        }
+
+        errno = 0;
+        uint64_t v = std::strtoull(text.c_str(), nullptr, 10);
+
+        if (errno == ERANGE)
+            return make_token(TOKEN_ILLEGAL);
+
+        return make_int(v);
     }
     Token Lexer::identifier() {
         while (std::isalnum((unsigned char)peek()) || peek() == '_') {

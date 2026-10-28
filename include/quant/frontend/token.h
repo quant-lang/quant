@@ -14,7 +14,8 @@ namespace quant{
 
         // identifiers & literals
         TOKEN_IDENT,
-        TOKEN_NUMBER,
+        TOKEN_INT,
+        TOKEN_FLOAT,
         TOKEN_STRING,
         TOKEN_CHAR_LITERAL,
 
@@ -116,10 +117,11 @@ namespace quant{
         std::string_view text;
 
         union {
-            double number;    // TOKEN_NUMBER
-            uint8_t char_val; // TOKEN_CHAR_LITERAL
+            double  number;    // TOKEN_FLOAT
+            uint8_t char_val;  // TOKEN_CHAR_LITERAL
         };
-        uint64_t inum = 0;    // TOKEN_NUMBER (integer literal, raw u64)
+        uint64_t inum = 0;     // TOKEN_INT
+        TokenType suffix = TOKEN_EOF; // HEX only
 
         SourceLocation loc;
 

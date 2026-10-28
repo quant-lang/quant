@@ -803,7 +803,7 @@ ast::FuncStmt Parser::parse_func(bool is_extern, const char* struct_name,
         const std::vector<std::string>*& slot;
         const std::vector<std::string>* saved;
         ~RestoreTypeParams() { slot = saved; }
-    } 
+    }
     restore_type_params{current_type_params, saved_type_params};
     current_type_params = eff_params;
 
@@ -1001,15 +1001,11 @@ ast::Expr* Parser::parse_expr(int min_prec) {
 }
 
 ast::Expr* Parser::parse_prefix() {
-    if (match(TOKEN_NUMBER)) {
-        std::string_view text = previous.text;
-        bool is_float = text.find('.') != std::string_view::npos ||
-                        text.find('e') != std::string_view::npos ||
-                        text.find('E') != std::string_view::npos;
-        if (is_float) {
-            return make_expr(ctx, ast::FloatExpr{ previous.number }, previous.loc);
-        }
+    if (match(TOKEN_INT)) {
         return make_expr(ctx, ast::IntExpr{ static_cast<int64_t>(previous.inum) }, previous.loc);
+    }
+    if (match(TOKEN_FLOAT)){
+        return make_expr(ctx, ast::FloatExpr{ previous.number }, previous.loc);
     }
 
     if (match(TOKEN_STRING)) {

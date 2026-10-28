@@ -2,7 +2,7 @@
 
 #include <iostream>
 #include <string>
-#include <fstream> 
+#include <fstream>
 #include <vector>
 
 #include "token.h"
@@ -29,8 +29,10 @@ namespace quant::lx{
             bool is_at_end();
 
             Token make_token(TokenType);
-            Token make_number();
+            Token make_int(uint64_t v);
+            Token make_float(double v);
 
+            Token radix_number(int base);   // 0x, 0b, 0o
             Token number();
             Token identifier();
             Token string();
@@ -38,7 +40,7 @@ namespace quant::lx{
 
         public:
             Token next_token();
-            
+
         Lexer(std::string source, CompilerContext& _ctx)
     : buffer(std::move(source)),
       pos(0),
