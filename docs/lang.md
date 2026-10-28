@@ -1179,4 +1179,4 @@ author's request).
 
 - String literals support escape sequences: `\n`, `\t`, `\r`, `\\`, `\"`, `\'`, `\0`.
 - Character literals use single quotes: `'a'`, `'\n'`, etc. `char` is an alias for `u8`.
-- Number literals are decimal only (no hex, octal, or binary prefixes).
+- Hex and Octal are supported
