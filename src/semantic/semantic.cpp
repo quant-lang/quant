@@ -236,7 +236,29 @@ const ast::Type* common_type(quant::CompilerContext& ctx, const ast::Type* a, co
     return (sb > sa) ? b : a;
 }
 
-bool int_literal_fits(int64_t value, ast::TypeKind k) {
+// A literal between 2^63 and 2^64-1 is stored as its two's-complement bits
+// with `is_unsigned` set. This keeps 0xFFFF_FFFF_FFFF_FFFF usable as u64.
+struct IntLiteralInfo {
+    uint64_t bits;
+    bool is_unsigned;
+};
+
+bool int_literal_fits(const IntLiteralInfo& lit, ast::TypeKind k) {
+    if (lit.is_unsigned) {
+        switch (k) {
+            case TypeKind::I8:  return lit.bits <= INT8_MAX;
+            case TypeKind::I16: return lit.bits <= INT16_MAX;
+            case TypeKind::I32: return lit.bits <= INT32_MAX;
+            case TypeKind::I64: return lit.bits <= INT64_MAX;
+            case TypeKind::U8:  return lit.bits <= UINT8_MAX;
+            case TypeKind::U16: return lit.bits <= UINT16_MAX;
+            case TypeKind::U32: return lit.bits <= UINT32_MAX;
+            case TypeKind::U64: return true;
+            default:            return false;
+        }
+    }
+
+    const int64_t value = static_cast<int64_t>(lit.bits);
     switch (k) {
         case TypeKind::I8:  return value >= INT8_MIN  && value <= INT8_MAX;
         case TypeKind::I16: return value >= INT16_MIN && value <= INT16_MAX;
@@ -261,20 +283,46 @@ bool is_int_literal(const ast::Expr* e) {
     return false;
 }
 
-// Signed value of an integer literal (handles the `-x` unary form).
-std::optional<int64_t> int_literal_value(const ast::Expr* e) {
-    if (const auto* ie = std::get_if<ast::IntExpr>(&e->kind)) {
-        return ie->value;
-    }
+bool has_explicit_suffix(const ast::Expr* e) {
+    if (!e) return false;
+    if (const auto* ie = std::get_if<ast::IntExpr>(&e->kind))
+        return ie->suffix != ast::TypeKind::Count;
     if (const auto* ue = std::get_if<ast::UnaryExpr>(&e->kind)) {
-        if (ue->op == ast::UnaryOp::Neg) {
-            if (const auto* ie = std::get_if<ast::IntExpr>(&ue->operand->kind)) {
-                if (ie->value == INT64_MIN) return std::nullopt; // -INT64_MIN overflows
-                return -ie->value;
-            }
+        if (ue->op == ast::UnaryOp::Neg && ue->operand) {
+            if (const auto* ie = std::get_if<ast::IntExpr>(&ue->operand->kind))
+                return ie->suffix != ast::TypeKind::Count;
         }
     }
-    return std::nullopt;
+    return false;
+}
+
+// Value of an integer literal (handles the `-x` unary form).
+std::optional<IntLiteralInfo> int_literal_info(const ast::Expr* e) {
+    if (!e) return std::nullopt;
+
+    if (const auto* ie = std::get_if<ast::IntExpr>(&e->kind)) {
+        return IntLiteralInfo{ static_cast<uint64_t>(ie->value), ie->is_unsigned };
+    }
+
+    const auto* ue = std::get_if<ast::UnaryExpr>(&e->kind);
+    if (!ue || ue->op != ast::UnaryOp::Neg || !ue->operand)
+        return std::nullopt;
+
+    const auto* ie = std::get_if<ast::IntExpr>(&ue->operand->kind);
+    if (!ie) return std::nullopt;
+
+    if (ie->is_unsigned) {
+        const uint64_t raw = static_cast<uint64_t>(ie->value);
+        constexpr uint64_t kInt64MinMagnitude = uint64_t{1} << 63;
+
+        if (raw > kInt64MinMagnitude) return std::nullopt; // negation does not fit i64
+        if (raw == kInt64MinMagnitude)
+            return IntLiteralInfo{ static_cast<uint64_t>(INT64_MIN), false };
+        return IntLiteralInfo{ static_cast<uint64_t>(-static_cast<int64_t>(raw)), false };
+    }
+
+    if (ie->value == INT64_MIN) return std::nullopt; // -INT64_MIN overflows
+    return IntLiteralInfo{ static_cast<uint64_t>(-ie->value), false };
 }
 
 bool is_float_literal(const ast::Expr* e) {
@@ -289,7 +337,10 @@ bool try_adapt_literal(const ast::Type* target, ast::Expr* value) {
 
     if (is_int_literal(value)) {
         if (!is_int_kind(target->kind)) return false; // int->float goes through IR cast
-        auto v = int_literal_value(value);
+        // An explicit suffix pins the literal's type; regular assignability
+        // rules (including safe widening) apply instead of re-adaptation.
+        if (has_explicit_suffix(value)) return false;
+        auto v = int_literal_info(value);
         if (!v) return false;
         if (!int_literal_fits(*v, target->kind)) return false;
         value->resolved_type = target;
@@ -379,8 +430,6 @@ enum class AssignCheck { Ok, LiteralOutOfRange, NullPtrToReference, Mismatch };
 AssignCheck check_assignable_value(quant::CompilerContext& ctx, const ast::Type* target, ast::Expr* value) {
     if (!target || !value) return AssignCheck::Mismatch;
     if (value->resolved_type && try_adapt_literal(target, value)) return AssignCheck::Ok;
-    if (is_int_literal(value) && is_int_kind(target->kind)) return AssignCheck::LiteralOutOfRange;
-    if (is_float_literal(value) && target->kind == TypeKind::F32) return AssignCheck::LiteralOutOfRange;
     if (is_assignable(target, value->resolved_type)) {
         // Safe references: the *T -> &T interop conversion is type-legal, but
         // a pointer that can be null cannot be turned into a reference.
@@ -393,6 +442,10 @@ AssignCheck check_assignable_value(quant::CompilerContext& ctx, const ast::Type*
         }
         return AssignCheck::Ok;
     }
+    if (is_int_literal(value) && is_int_kind(target->kind))
+        return has_explicit_suffix(value) ? AssignCheck::Mismatch
+                                          : AssignCheck::LiteralOutOfRange;
+    if (is_float_literal(value) && target->kind == TypeKind::F32) return AssignCheck::LiteralOutOfRange;
     return AssignCheck::Mismatch;
 }
 
@@ -1820,6 +1873,24 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
 
     const ast::Type* ty = std::visit(overloaded{
         [&](const ast::IntExpr& n) -> const ast::Type* {
+            const IntLiteralInfo lit{
+                static_cast<uint64_t>(n.value), n.is_unsigned
+            };
+
+            if (n.suffix != ast::TypeKind::Count) {
+                const ast::Type* suffix_type = ctx.types.get_builtin(n.suffix);
+                if (!int_literal_fits(lit, n.suffix)) {
+                    ctx.errors.add(expr->loc, "Literal value does not fit in '" +
+                                              suffix_type->to_string(ctx) + "'");
+                    return nullptr;
+                }
+                return suffix_type;
+            }
+
+            // Unsuffixed literals above INT64_MAX default to u64 instead of
+            // silently wrapping to a negative i64.
+            if (n.is_unsigned) return ctx.types.get_builtin(TypeKind::U64);
+
             if (n.value >= INT32_MIN && n.value <= INT32_MAX) {
                 return ctx.types.get_builtin(TypeKind::I32);
             }

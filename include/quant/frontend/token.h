@@ -121,9 +121,9 @@ namespace quant{
             uint8_t char_val;  // TOKEN_CHAR_LITERAL
         };
         uint64_t inum = 0;     // TOKEN_INT
-        TokenType suffix = TOKEN_EOF; // HEX only
-
         SourceLocation loc;
+        // Explicit integer literal suffix (TOKEN_I8..TOKEN_U64) or TOKEN_EOF.
+        TokenType suffix = TOKEN_EOF;
 
         [[nodiscard]] bool is_type() const noexcept{
              return type >= TOKEN_VOID && type <= TOKEN_CHAR_TYPE;

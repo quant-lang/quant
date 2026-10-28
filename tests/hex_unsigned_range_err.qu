@@ -1,0 +1,6 @@
+// Unsuffixed values above INT64_MAX are u64 and do not fit in i64.
+i32 main() {
+    i64 a = 0xFFFF_FFFF_FFFF_FFFF;
+    i64 b = 0x8000_0000_0000_0000;
+    return 0;
+}

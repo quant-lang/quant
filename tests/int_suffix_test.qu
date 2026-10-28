@@ -1,0 +1,30 @@
+load "std::io";
+using std::io;
+
+// Explicit type suffixes work on decimal literals too.
+i32 main() {
+    u8 a = 200u8;
+    u16 b = 40000u16;
+    u32 c = 4000000000u32;
+    u64 d = 10000000000u64;
+    u32 u_alias = 100u;                   // C-like shorthand for u32
+    u32 U_alias = 100U;
+
+    i8 e = 42i8;
+    i16 f = 1000i16;
+    i32 g = 42i32;
+    i64 h = 5000000000i64;
+
+    println(a as str);                    // 200
+    println(b as str);                    // 40000
+    println(c as str);                    // 4000000000
+    println(d as str);                    // 10000000000
+    println(u_alias as str);              // 100
+    println(U_alias as str);              // 100
+    println(e as str);                    // 42
+    println(f as str);                    // 1000
+    println(g as str);                    // 42
+    println(h as str);                    // 5000000000
+
+    return 0;
+}

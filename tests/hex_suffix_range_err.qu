@@ -1,0 +1,10 @@
+// A suffix pins the literal type and the value must fit it.
+i32 main() {
+    u8 a = 0x100u8;
+    i8 b = 0x80i8;
+    u32 c = 0xFFFF_FFFF_FFFF_FFFFu32;
+    u8 d = 255u16;
+    u32 e = 0x1_0000_0000u;
+    u8 f = 255u;
+    return 0;
+}

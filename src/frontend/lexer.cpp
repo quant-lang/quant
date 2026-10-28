@@ -1,3 +1,4 @@
+#include <cerrno>
 #include <cmath>
 #include <functional>
 #include <iostream>
@@ -6,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 
 #include "quant/frontend/lexer.h"
@@ -20,6 +22,18 @@ namespace quant::lx {
         if (c >= 'a' && c <= 'f') return c - 'a' + 10;
         if (c >= 'A' && c <= 'F') return c - 'A' + 10;
         return 99;
+    }
+    static TokenType int_suffix_token(std::string_view text) {
+        if (text == "i8")  return TOKEN_I8;
+        if (text == "i16") return TOKEN_I16;
+        if (text == "i32") return TOKEN_I32;
+        if (text == "i64") return TOKEN_I64;
+        if (text == "u8")  return TOKEN_U8;
+        if (text == "u16") return TOKEN_U16;
+        if (text == "u32") return TOKEN_U32;
+        if (text == "u64") return TOKEN_U64;
+        if (text == "u" || text == "U") return TOKEN_U32; // C-like shorthand
+        return TOKEN_EOF;
     }
     char Lexer::peek() {
         if (pos >= buffer.size()) return '\0';
@@ -157,8 +171,6 @@ namespace quant::lx {
             {ctx.srcloc.file, token_line, token_column, static_cast<int>(pos - start)}
         };
     }
-    #include <cerrno>
-
     Token Lexer::make_int(uint64_t v) {
         Token tok = make_token(TOKEN_INT);
         tok.inum = v;
@@ -169,6 +181,19 @@ namespace quant::lx {
         Token tok = make_token(TOKEN_FLOAT);
         tok.number = v;
         return tok;
+    }
+
+    TokenType Lexer::consume_int_suffix() {
+        size_t suffix_start = pos;
+        while (std::isalnum((unsigned char)peek()) || peek() == '_')
+            advance();
+
+        if (pos == suffix_start)
+            return TOKEN_EOF;
+
+        std::string_view text(buffer.data() + suffix_start, pos - suffix_start);
+        TokenType type = int_suffix_token(text);
+        return type == TOKEN_EOF ? TOKEN_ILLEGAL : type;
     }
 
     Token Lexer::radix_number(int base) {
@@ -188,22 +213,34 @@ namespace quant::lx {
 
             int d = digit_value(c);
             if (d >= base) {
+                // A letter/underscore here may start an explicit type suffix
+                // (0xFFu8); an invalid base digit is always an error.
+                if (std::isalpha((unsigned char)c) || c == '_')
+                    break;
+
                 while (std::isalnum((unsigned char)peek()) || peek() == '_')
                     advance();
                 return make_token(TOKEN_ILLEGAL);
             }
 
-            if (value > (UINT64_MAX - d) / base) overflow = true;
-            value = value * base + d;
+            if (value > (UINT64_MAX - static_cast<uint64_t>(d)) /
+                            static_cast<uint64_t>(base))
+                overflow = true;
+            value = value * static_cast<uint64_t>(base) + static_cast<uint64_t>(d);
             digits++;
             advance();
+        }
+
+        TokenType suffix = TOKEN_EOF;
+        if (std::isalpha((unsigned char)peek())) {
+            suffix = consume_int_suffix();
+            if (suffix == TOKEN_ILLEGAL) return make_token(TOKEN_ILLEGAL);
         }
 
         if (digits == 0 || overflow) return make_token(TOKEN_ILLEGAL);
 
         Token tok = make_int(value);
-        tok.inum = value;
-        tok.number = static_cast<double>(value);
+        tok.suffix = suffix;
         return tok;
     }
     Token Lexer::number() {
@@ -233,13 +270,26 @@ namespace quant::lx {
                 advance();
         }
 
+        // Keep the numeric part separate from an optional type suffix.
+        const size_t numeric_end = pos;
+        TokenType suffix = TOKEN_EOF;
+        if (std::isalpha((unsigned char)peek())) {
+            suffix = consume_int_suffix();
+            if (suffix == TOKEN_ILLEGAL || is_float)
+                return make_token(TOKEN_ILLEGAL);
+        }
+
         std::string text;
-        for (size_t i = start; i < pos; i++)
+        for (size_t i = start; i < numeric_end; i++)
             if (buffer[i] != '_')
                 text.push_back(buffer[i]);
 
         if (is_float) {
-            return make_float(std::stod(text));
+            errno = 0;
+            double v = std::strtod(text.c_str(), nullptr);
+            if (errno == ERANGE || !std::isfinite(v))
+                return make_token(TOKEN_ILLEGAL);
+            return make_float(v);
         }
 
         errno = 0;
@@ -248,7 +298,9 @@ namespace quant::lx {
         if (errno == ERANGE)
             return make_token(TOKEN_ILLEGAL);
 
-        return make_int(v);
+        Token tok = make_int(v);
+        tok.suffix = suffix;
+        return tok;
     }
     Token Lexer::identifier() {
         while (std::isalnum((unsigned char)peek()) || peek() == '_') {

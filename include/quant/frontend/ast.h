@@ -74,6 +74,11 @@ namespace quant::ast {
 
     struct IntExpr {
         int64_t value;
+        // True when the literal does not fit in int64_t and `value` holds its
+        // two's-complement bits (e.g. 0xFFFF_FFFF_FFFF_FFFF)
+        bool is_unsigned = false;
+        // Explicit type suffix (0xFFu8); Count means "no suffix"
+        TypeKind suffix = TypeKind::Count;
     };
 
     struct BoolExpr {

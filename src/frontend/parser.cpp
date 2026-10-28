@@ -5,6 +5,7 @@
 #include "quant/support/symbol_path.h"
 #include "utils/logger.h"
 
+#include <cstdint>
 #include <utility>
 
 using namespace utils::logger;
@@ -12,6 +13,20 @@ using namespace utils::logger;
 namespace quant::ps {
 
 namespace {
+
+ast::TypeKind int_suffix_kind(TokenType t) {
+    switch (t) {
+        case TOKEN_I8:  return ast::TypeKind::I8;
+        case TOKEN_I16: return ast::TypeKind::I16;
+        case TOKEN_I32: return ast::TypeKind::I32;
+        case TOKEN_I64: return ast::TypeKind::I64;
+        case TOKEN_U8:  return ast::TypeKind::U8;
+        case TOKEN_U16: return ast::TypeKind::U16;
+        case TOKEN_U32: return ast::TypeKind::U32;
+        case TOKEN_U64: return ast::TypeKind::U64;
+        default:        return ast::TypeKind::Count;
+    }
+}
 
 bool is_type_token(TokenType t) {
     switch (t) {
@@ -1002,7 +1017,11 @@ ast::Expr* Parser::parse_expr(int min_prec) {
 
 ast::Expr* Parser::parse_prefix() {
     if (match(TOKEN_INT)) {
-        return make_expr(ctx, ast::IntExpr{ static_cast<int64_t>(previous.inum) }, previous.loc);
+        return make_expr(ctx, ast::IntExpr{
+            static_cast<int64_t>(previous.inum),
+            previous.inum > static_cast<uint64_t>(INT64_MAX),
+            int_suffix_kind(previous.suffix)
+        }, previous.loc);
     }
     if (match(TOKEN_FLOAT)){
         return make_expr(ctx, ast::FloatExpr{ previous.number }, previous.loc);

@@ -20,7 +20,7 @@ Quant is an imperative, statically-typed systems language. Syntax uses C-like br
 - String literals live in read-only memory and carry no length; `mut` does not
   make them writable.
 
-Integer literals default to `i32`. Float literals default to `f64`. Boolean literals are `true`/`false` of type `bool`.
+Integer literals default to `i32` (or `u64` when the value exceeds `INT64_MAX`); an explicit suffix (`i8`..`u64`, or plain `u`/`U` for `u32`) overrides that. Float literals default to `f64`. Boolean literals are `true`/`false` of type `bool`.
 
 ---
 
@@ -667,7 +667,7 @@ ZeroPoint is an AArch64 ELF OS with its own minimal ABI ("Linux-like, different 
 
 - **Do not assume GC or RAII.** Memory is managed manually via regions and heap. There is no automatic cleanup when variables go out of scope.
 
-- **Do not use hex, octal, or binary number literals.** Only decimal literals are supported.
+- **Integer literals** support decimal, hex (`0x`), octal (`0o`) and binary (`0b`) forms, `_` digit separators, and explicit suffixes (`i8`..`u64`, with plain `u`/`U` as C-like `u32`). Unsuffixed values above `INT64_MAX` default to `u64`.
 
 - **Do not use `#include`, `import`, `package`, or other module syntax from other languages.** Use `load "module::path";`.
 
@@ -873,9 +873,12 @@ docs/lang.md shows `else if` syntax. The parser (`parser.cpp:586`) handles this 
 
 docs/lang.md says `as!` requires same-size types. The implementation (`semantic.cpp:2940-2945`) skips the size check for pointer and reference types. This is not documented.
 
-### 8. docs/lang.md says "Number literals are decimal only"
+### 8. Number literals
 
-Confirmed by the lexer (`lexer.cpp`). No hex (`0x`), octal (`0o`), or binary (`0b`) prefix support.
+The lexer (`lexer.cpp`) supports decimal, hex (`0x`), octal (`0o`) and binary
+(`0b`) literals, `_` digit separators, and explicit integer suffixes
+(`i8`..`u64`, plus plain `u`/`U` meaning `u32`). Unsuffixed values above
+`INT64_MAX` are typed as `u64`.
 
 ### 9. String to numeric `as` conversion
 

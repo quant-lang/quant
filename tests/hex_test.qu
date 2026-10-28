@@ -1,6 +1,58 @@
 load "std::io";
+using std::io;
 
-@entry i32 main(){
-   i64 x = 0xF2800000;
-   std::io::print(x);
+// Hex, binary and octal literals, digit separators and type suffixes.
+i32 main() {
+    i64 h = 0xF2800000;
+    println(h as str);                    // 4068474880
+
+    i64 bin = 0b1010_0101;
+    println(bin as str);                  // 165
+
+    i64 oct = 0o777;
+    println(oct as str);                  // 511
+
+    i64 dec = 1_000_000;
+    println(dec as str);                  // 1000000
+
+    u8 a = 0xFFu8;
+    u16 b = 0xFFFFu16;
+    u32 c = 0xFF_FF_FF_FFu32;
+    u64 d = 0xFFFF_FFFF_FFFF_FFFFu64;
+    println(a as str);                    // 255
+    println(b as str);                    // 65535
+    println(c as str);                    // 4294967295
+    println(d as str);                    // 18446744073709551615
+
+    u8 bin_suffix = 0b1111_0000u8;
+    u16 oct_suffix = 0o777u16;
+    u8 upper_hex = 0XABu8;
+    u32 u_alias = 0xFF_FF_FF_FFu;
+    u32 U_alias = 0xABU;
+    println(bin_suffix as str);           // 240
+    println(oct_suffix as str);           // 511
+    println(upper_hex as str);            // 171
+    println(u_alias as str);              // 4294967295
+    println(U_alias as str);              // 171
+
+    // An unsuffixed literal above INT64_MAX defaults to u64.
+    u64 e = 0x8000_0000_0000_0000;
+    u64 max_unsuffixed = 0xFFFF_FFFF_FFFF_FFFF;
+    println(e as str);                    // 9223372036854775808
+    println(max_unsuffixed as str);       // 18446744073709551615
+
+    i64 f = 0x7FFF_FFFF_FFFF_FFFF;
+    println(f as str);                    // 9223372036854775807
+
+    i8 g = 0x7Fi8;
+    println(g as str);                    // 127
+
+    i64 neg = -0x8000_0000_0000_0000;
+    println(neg as str);                  // -9223372036854775808
+
+    // The suffix and unsigned value survive compile-time evaluation.
+    u64 ct = #(0xFFFF_FFFF_FFFF_FFFFu64);
+    println(ct as str);                   // 18446744073709551615
+
+    return 0;
 }

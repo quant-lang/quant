@@ -801,7 +801,15 @@ bool Evaluator::substitute_literal(ast::Expr* expr, const Value& value) {
             ctx.errors.add(expr->loc, "compile-time expression produced a non-integer value");
             return false;
         }
-        expr->kind = ast::IntExpr{ *i };
+        ast::IntExpr lit{ *i };
+        // Keep the unsigned marker for values above INT64_MAX so later range
+        // checks do not silently reinterpret them as negative signed values.
+        if (*i < 0 &&
+            (t->kind == ast::TypeKind::U8 || t->kind == ast::TypeKind::U16 ||
+             t->kind == ast::TypeKind::U32 || t->kind == ast::TypeKind::U64)) {
+            lit.is_unsigned = true;
+        }
+        expr->kind = lit;
     } else {
         ctx.errors.add(expr->loc,
             "compile-time expression has an unsupported result type: " + t->to_string(ctx));

@@ -33,6 +33,7 @@ namespace quant::lx{
             Token make_float(double v);
 
             Token radix_number(int base);   // 0x, 0b, 0o
+            TokenType consume_int_suffix(); // i8, ..., u64
             Token number();
             Token identifier();
             Token string();

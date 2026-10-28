@@ -1,0 +1,10 @@
+// Invalid base digits, unknown suffixes and float suffixes are rejected.
+i32 main() {
+    i64 a = 0b2;
+    i64 b = 0o8;
+    i64 c = 0x1g;
+    i64 d = 0x1u64x;
+    i64 e = 100uu;
+    f64 f = 1.5u8;
+    return 0;
+}

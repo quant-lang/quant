@@ -24,6 +24,22 @@
 
 Integer literals are i32 by default. Float literals are f64 by default. Boolean literals `true` and `false` are `bool`.
 
+Integer literals can be written in decimal, hex (`0x`/`0X`), binary (`0b`/`0B`) or
+octal (`0o`/`0O`) form, and `_` can be used as a digit separator. An optional
+type suffix (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`) pins the
+literal's type; the value must fit that type. A plain `u` or `U` is C-like
+shorthand for `u32`. Unsuffixed literals above `INT64_MAX` default to `u64`.
+
+```qu
+u8  a = 0xFFu8;                      // 255, explicit u8
+u32 b = 0xFFFFFFFFu;                 // C-like shorthand for u32
+u64 c = 0xFFFF_FFFF_FFFF_FFFFu64;    // 18446744073709551615
+u64 d = 0x8000_0000_0000_0000;       // unsuffixed, defaults to u64
+i64 e = 0x7FFF_FFFF_FFFF_FFFF;       // 9223372036854775807
+```
+
+Float suffixes (`f32`/`f64`) and hex float literals (`0x1p3`) are not supported
+
 `str` is not a type of its own: it is exactly `*char` (`char` is exactly `u8`), a
 bare pointer to NUL-terminated bytes with no length and no capacity. The two
 spellings are interchangeable, so a string literal fits any `*char` binding:
@@ -1179,4 +1195,4 @@ author's request).
 
 - String literals support escape sequences: `\n`, `\t`, `\r`, `\\`, `\"`, `\'`, `\0`.
 - Character literals use single quotes: `'a'`, `'\n'`, etc. `char` is an alias for `u8`.
-- Hex and Octal are supported
+- Number literals support hex, binary and octal prefixes, `_` digit separators, and explicit integer type suffixes (see Number literals above).
