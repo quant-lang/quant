@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "quant/backend/isel.h"
+#include "quant/ir/ir.h"
 #include "utils/logger.h"
 
 namespace quant::codegen {
@@ -603,6 +604,9 @@ void ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRIns
             text.lea_r64_rip(x86::RAX, global_label(x.global_id));
             text.mov_mem_r64(temp_slot(x.dst, fn), x86::RAX);
         },
+        [&](const IRShift& x) {
+            emit_shift(x, fn);
+        },
     }, inst);
 }
 
@@ -745,6 +749,20 @@ void ISel::generate(const IRProgram& program) {
 
     obj.text = std::move(text.code);
     obj.relocs = std::move(text.relocs);
+}
+void ISel::emit_shift(const IRShift& x, const IRFunction& fn) {
+    text.mov_r64_mem(x86::RAX, temp_slot(x.lhs, fn));
+    text.mov_r64_mem(x86::RCX, temp_slot(x.rhs, fn));
+
+    if (x.is_left) {
+        text.shl_r64_cl(x86::RAX);
+    } else if (x.is_ar) {
+        text.sar_r64_cl(x86::RAX);
+    } else {
+        text.shr_r64_cl(x86::RAX);
+    }
+
+    text.mov_mem_r64(temp_slot(x.dst, fn), x86::RAX);
 }
 
 } // namespace quant::codegen

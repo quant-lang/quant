@@ -80,8 +80,6 @@ class SemanticAnalyzer {
                                          const std::string& base_name,
                                          const types::GenericStructDef* def);
 
-        const ast::Type* analyze_int(const ast::IntExpr&);
-        const ast::Type* analyze_string(const ast::StringExpr&);
         const ast::Type* analyze_var(const ast::VarExpr&, const ast::Expr*);
         const ast::Type* analyze_assign(const ast::AssignExpr&);
         const ast::Type* analyze_binary(const ast::BinaryExpr&, const ast::Expr* expr);
@@ -93,6 +91,8 @@ class SemanticAnalyzer {
         const ast::Type* analyze_index(const ast::IndexExpr&);
         const ast::Type* analyze_struct_init(const ast::StructInitExpr&);
         const ast::Type* analyze_sizeof(const ast::SizeofExpr&);
+        const ast::Type* analyze_shift(const ast::ShiftExpr&, const ast::Expr* expr);
+
         std::optional<int64_t> try_eval_const(const ast::Expr* expr);
         std::optional<int64_t> eval_guard_cond(const ast::Expr* expr, const std::string& struct_name);
     };

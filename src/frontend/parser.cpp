@@ -130,13 +130,17 @@ int get_precedence(TokenType t) {
         case TOKEN_GTE:
             return 7;
 
+        case TOKEN_SHL:
+        case TOKEN_SHR:
+            return 8;
+
         case TOKEN_PLUS:
         case TOKEN_MINUS:
-            return 8;
+            return 9;
 
         case TOKEN_STAR:
         case TOKEN_SLASH:
-            return 9;
+            return 10;
 
         default:
             return -1;
@@ -243,6 +247,21 @@ bool Parser::match(TokenType type) {
     return true;
 }
 
+bool Parser::match_closing_angle() {
+    if (match(TOKEN_GT)) return true;
+    if (!check(TOKEN_SHR)) return false;
+
+    // Split `>>` into the '>' being consumed now and a '>' left as current.
+    previous = current;
+    Token rest = current;
+    rest.type = TOKEN_GT;
+    rest.text.remove_prefix(1);
+    rest.loc.column += 1;
+    if (rest.loc.length > 0) --rest.loc.length;
+    current = rest;
+    return true;
+}
+
 ErrorBag::ParserException Parser::error(const SourceLocation& loc, int length, const std::string& msg) {
     ctx.errors.add(loc, length, msg);
     return ErrorBag::ParserException();
@@ -309,6 +328,15 @@ bool Parser::looks_like_generic_args() {
                 if (depth == 0) {
                     Token after = peek(i + 1);
                     return after.type == TOKEN_LPAREN || after.type == TOKEN_LBRACE;
+                }
+                break;
+            case TOKEN_SHR:
+                // `>>` closes two nested generic argument lists at once.
+                depth -= 2;
+                if (depth <= 0) {
+                    Token after = peek(i + 1);
+                    return depth == 0 &&
+                           (after.type == TOKEN_LPAREN || after.type == TOKEN_LBRACE);
                 }
                 break;
             case TOKEN_COMMA:
@@ -447,6 +475,7 @@ DeclKind Parser::declaration_kind() {
                 Token p = at(i);
                 if (p.type == TOKEN_LT) ++depth;
                 else if (p.type == TOKEN_GT) --depth;
+                else if (p.type == TOKEN_SHR) depth -= 2;
                 else if (p.type == TOKEN_EOF || p.type == TOKEN_SEMICOLON) return DeclKind::None;
                 ++i;
             }
@@ -465,6 +494,7 @@ DeclKind Parser::declaration_kind() {
             Token p = at(i);
             if (p.type == TOKEN_LT) ++depth;
             else if (p.type == TOKEN_GT) --depth;
+            else if (p.type == TOKEN_SHR) depth -= 2;
             else if (p.type == TOKEN_EOF || p.type == TOKEN_SEMICOLON) return DeclKind::None;
             ++i;
         }
@@ -503,7 +533,10 @@ ast::StructDecl Parser::parse_struct_decl() {
             Token param = expect(TOKEN_IDENT, "Expected type parameter name");
             ret.type_params.push_back(std::string(param.text));
         } while(match(TOKEN_COMMA));
-        expect(TOKEN_GT, "Expected '>' after type parameters");
+        if (!match_closing_angle()) {
+            throw error(current.loc, current.text.length(),
+                        "Expected '>' after type parameters");
+        }
     }
     expect(TOKEN_LBRACE, "Expected '{' after struct name");
 
@@ -792,7 +825,10 @@ ast::FuncStmt Parser::parse_func(bool is_extern, const char* struct_name,
             Token param = expect(TOKEN_IDENT, "Expected type parameter name");
             ret.type_params.push_back(std::string(param.text));
         } while(match(TOKEN_COMMA));
-        expect(TOKEN_GT, "Expected '>' after type parameters");
+        if (!match_closing_angle()) {
+            throw error(current.loc, current.text.length(),
+                        "Expected '>' after type parameters");
+        }
     }
 
     if (!ret.type_params.empty()) {
@@ -1008,6 +1044,14 @@ ast::Expr* Parser::parse_expr(int min_prec) {
             return make_expr(ctx, ast::AssignExpr{ left, bin }, left->loc);
         }
 
+        if (op.type == TOKEN_SHL || op.type == TOKEN_SHR) {
+            ast::Expr* right = parse_expr(prec + 1);
+            left = make_expr(ctx, ast::ShiftExpr{
+                left, right, op.type == TOKEN_SHL
+            }, op.loc);
+            continue;
+        }
+
         ast::Expr* right = parse_expr(prec + 1);
         left = make_binary(left, right, op.type);
     }
@@ -1142,7 +1186,10 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
                     do {
                         type_args.push_back(parse_type(false, current_type_params));
                     } while (match(TOKEN_COMMA));
-                    expect(TOKEN_GT, "Expected '>' after generic type arguments");
+                    if (!match_closing_angle()) {
+                        throw error(current.loc, current.text.length(),
+                                    "Expected '>' after generic type arguments");
+                    }
 
                     if (check(TOKEN_LBRACE)) {
                         advance(); // consume {
@@ -1333,7 +1380,10 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
                 const ast::Type* a = parse_type(false, type_params);
                 args.push_back(a);
             } while (match(TOKEN_COMMA));
-            expect(TOKEN_GT, "Expected '>' after type arguments");
+            if (!match_closing_angle()) {
+                throw error(current.loc, current.text.length(),
+                            "Expected '>' after type arguments");
+            }
             return ctx.types.get_deferred_generic(name, args);
         }
 

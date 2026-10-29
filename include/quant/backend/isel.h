@@ -59,6 +59,7 @@ private:
     void emit_region_begin(const IRRegionBegin& x);
     void emit_region_alloc(const IRRegionAlloc& x, const IRFunction& fn);
     void emit_region_end(const IRRegionEnd& x);
+    void emit_shift(const IRShift& x, const IRFunction& fn);
 
     uint32_t region_alloc_label() { return next_region_label++; }
 

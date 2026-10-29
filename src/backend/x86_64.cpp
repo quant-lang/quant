@@ -261,6 +261,15 @@ void Emitter::call_mem_rip(const std::string& sym) {
     reloc(sym, mc::RelType::X86_64_PC32, -4);
     u32(0);
 }
+// shifts: REX.W D3 /digit  (count in CL)
+void Emitter::shl_r64_cl(R64 r) { emit_modrm_reg(*this, 0xD3, true, 4, r); }
+void Emitter::shr_r64_cl(R64 r) { emit_modrm_reg(*this, 0xD3, true, 5, r); }
+void Emitter::sar_r64_cl(R64 r) { emit_modrm_reg(*this, 0xD3, true, 7, r); }
+
+// shifts: REX.W C1 /digit ib  (immediate count)
+void Emitter::shl_r64_imm8(R64 r, uint8_t imm) { emit_modrm_reg(*this, 0xC1, true, 4, r); u8(imm); }
+void Emitter::shr_r64_imm8(R64 r, uint8_t imm) { emit_modrm_reg(*this, 0xC1, true, 5, r); u8(imm); }
+void Emitter::sar_r64_imm8(R64 r, uint8_t imm) { emit_modrm_reg(*this, 0xC1, true, 7, r); u8(imm); }
 
 // sse
 

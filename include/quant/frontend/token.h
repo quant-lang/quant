@@ -101,6 +101,9 @@ namespace quant{
         TOKEN_GTE,       // >=
         TOKEN_COLON_COLON, // ::
 
+        TOKEN_SHL,     // <<
+        TOKEN_SHR,     // >>
+
         // delimiters
         TOKEN_LPAREN,    // (
         TOKEN_RPAREN,    // )

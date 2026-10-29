@@ -6,6 +6,7 @@
 #include "quant/ir/ir_gen.h"
 #include "quant/attributes/attributes.h"
 #include "quant/frontend/ast.h"
+#include "quant/ir/ir.h"
 #include "quant/support/symbol_path.h"
 #include "utils/logger.h"
 
@@ -2270,6 +2271,19 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             }
 
             emit(IRLoadElement{dst, base, idx, elem_size});
+            return dst;
+        },
+        [&](const ast::ShiftExpr& node) -> uint32_t {
+            const uint32_t lhs = gen_expr(*node.lhs);
+            const uint32_t rhs = gen_expr(*node.rhs);
+            const uint32_t dst = new_reg();
+
+            const ast::Type* lhs_ty = node.lhs->resolved_type;
+            const bool is_signed_lhs = lhs_ty &&
+                (is_signed_int_kind(lhs_ty->kind) || lhs_ty->kind == ast::TypeKind::Enum);
+            const bool is_ar = !node.is_left && is_signed_lhs;
+
+            emit(IRShift{dst, lhs, rhs, node.is_left, is_ar});
             return dst;
         }
     }, expr.kind);

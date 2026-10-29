@@ -711,6 +711,18 @@ void AArch64ISel::emit_inst(const IRProgram& program, const IRFunction& fn, cons
             text.emit32(0x91000000u);
             text.str_imm(aarch64::X0, aarch64::X29, temp_offset(x.dst, fn));
         },
+        [&](const IRShift& x) {
+            text.ldr_imm(aarch64::X0, aarch64::X29, temp_offset(x.lhs, fn));
+            text.ldr_imm(aarch64::X1, aarch64::X29, temp_offset(x.rhs, fn));
+            if (x.is_left) {
+                text.lsl_reg(aarch64::X0, aarch64::X0, aarch64::X1);
+            } else if (x.is_ar) {
+                text.asr_reg(aarch64::X0, aarch64::X0, aarch64::X1);
+            } else {
+                text.lsr_reg(aarch64::X0, aarch64::X0, aarch64::X1);
+            }
+            text.str_imm(aarch64::X0, aarch64::X29, temp_offset(x.dst, fn));
+        },
     }, inst);
 }
 

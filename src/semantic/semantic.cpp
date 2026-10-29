@@ -272,50 +272,41 @@ bool int_literal_fits(const IntLiteralInfo& lit, ast::TypeKind k) {
     }
 }
 
-// A negative integer literal (e.g. `-5`) is parsed as UnaryExpr(Neg, IntExpr).
-bool is_int_literal(const ast::Expr* e) {
-    if (!e) return false;
-    if (std::holds_alternative<ast::IntExpr>(e->kind)) return true;
+// Returns the integer literal node behind `e`, looking through a leading
+// unary minus (`-5` is parsed as UnaryExpr(Neg, IntExpr)).
+const ast::IntExpr* int_literal_node(const ast::Expr* e) {
+    if (!e) return nullptr;
+    if (const auto* ie = std::get_if<ast::IntExpr>(&e->kind)) return ie;
     if (const auto* ue = std::get_if<ast::UnaryExpr>(&e->kind)) {
-        return ue->op == ast::UnaryOp::Neg &&
-               ue->operand && std::holds_alternative<ast::IntExpr>(ue->operand->kind);
+        if (ue->op == ast::UnaryOp::Neg && ue->operand)
+            return std::get_if<ast::IntExpr>(&ue->operand->kind);
     }
-    return false;
+    return nullptr;
+}
+
+bool is_int_literal(const ast::Expr* e) {
+    return int_literal_node(e) != nullptr;
 }
 
 bool has_explicit_suffix(const ast::Expr* e) {
-    if (!e) return false;
-    if (const auto* ie = std::get_if<ast::IntExpr>(&e->kind))
-        return ie->suffix != ast::TypeKind::Count;
-    if (const auto* ue = std::get_if<ast::UnaryExpr>(&e->kind)) {
-        if (ue->op == ast::UnaryOp::Neg && ue->operand) {
-            if (const auto* ie = std::get_if<ast::IntExpr>(&ue->operand->kind))
-                return ie->suffix != ast::TypeKind::Count;
-        }
-    }
-    return false;
+    const ast::IntExpr* ie = int_literal_node(e);
+    return ie && ie->suffix != ast::TypeKind::Count;
 }
 
 // Value of an integer literal (handles the `-x` unary form).
 std::optional<IntLiteralInfo> int_literal_info(const ast::Expr* e) {
-    if (!e) return std::nullopt;
-
-    if (const auto* ie = std::get_if<ast::IntExpr>(&e->kind)) {
-        return IntLiteralInfo{ static_cast<uint64_t>(ie->value), ie->is_unsigned };
-    }
-
-    const auto* ue = std::get_if<ast::UnaryExpr>(&e->kind);
-    if (!ue || ue->op != ast::UnaryOp::Neg || !ue->operand)
-        return std::nullopt;
-
-    const auto* ie = std::get_if<ast::IntExpr>(&ue->operand->kind);
+    const ast::IntExpr* ie = int_literal_node(e);
     if (!ie) return std::nullopt;
 
+    if (!std::holds_alternative<ast::UnaryExpr>(e->kind))
+        return IntLiteralInfo{ static_cast<uint64_t>(ie->value), ie->is_unsigned };
+
+    // Negated literal: it must still fit in int64_t.
+    const uint64_t raw = static_cast<uint64_t>(ie->value);
     if (ie->is_unsigned) {
-        const uint64_t raw = static_cast<uint64_t>(ie->value);
         constexpr uint64_t kInt64MinMagnitude = uint64_t{1} << 63;
 
-        if (raw > kInt64MinMagnitude) return std::nullopt; // negation does not fit i64
+        if (raw > kInt64MinMagnitude) return std::nullopt;
         if (raw == kInt64MinMagnitude)
             return IntLiteralInfo{ static_cast<uint64_t>(INT64_MIN), false };
         return IntLiteralInfo{ static_cast<uint64_t>(-static_cast<int64_t>(raw)), false };
@@ -1948,6 +1939,9 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
         [&](const ast::SizeofExpr& n) -> const ast::Type* {
             return analyze_sizeof(n);
         },
+        [&](const ast::ShiftExpr& n) -> const ast::Type* {
+            return analyze_shift(n, expr);
+        },
         [&](const auto&) -> const ast::Type* {
             ctx.errors.add("Unsupported expression node in semantic analysis");
             return nullptr;
@@ -1961,14 +1955,6 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
         comptime::Evaluator(ctx).evaluate_and_substitute(expr);
     }
     return ty;
-}
-
-const ast::Type* SemanticAnalyzer::analyze_int(const ast::IntExpr&) {
-    return ctx.types.get_builtin(TypeKind::I32);
-}
-
-const ast::Type* SemanticAnalyzer::analyze_string(const ast::StringExpr&) {
-    return ctx.types.get_pointer(ctx.types.get_builtin(TypeKind::U8));
 }
 
 const ast::Type* SemanticAnalyzer::analyze_var(const ast::VarExpr& var, const ast::Expr* expr) {
@@ -2430,6 +2416,46 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b, cons
 
     ctx.errors.add(expr->loc, type_mismatch_error("binary expression", ctx, l, r));
     return nullptr;
+}
+
+const ast::Type* SemanticAnalyzer::analyze_shift(const ast::ShiftExpr& s, const ast::Expr* expr) {
+    const ast::Type* lhs = analyze_expr(s.lhs);
+    const ast::Type* rhs = analyze_expr(s.rhs);
+    if (!lhs || !rhs) return nullptr;
+
+    // Enums participate in arithmetic as their underlying i32 value.
+    const ast::Type* i32_type = ctx.types.get_builtin(TypeKind::I32);
+    if (lhs->kind == TypeKind::Enum) lhs = i32_type;
+    if (rhs->kind == TypeKind::Enum) rhs = i32_type;
+
+    if (!is_int_kind(lhs->kind)) {
+        ctx.errors.add(s.lhs->loc, "Left operand of shift must be an integer, got '" +
+                                   lhs->to_string(ctx) + "'");
+        return nullptr;
+    }
+    if (!is_int_kind(rhs->kind)) {
+        ctx.errors.add(s.rhs->loc, "Shift amount must be an integer, got '" +
+                                   rhs->to_string(ctx) + "'");
+        return nullptr;
+    }
+
+    // Let an unsuffixed literal adopt the other operand's type, matching the
+    // usual arithmetic conversions used for binary expressions.
+    if (lhs->kind != rhs->kind) {
+        if (is_int_literal(s.rhs) && try_adapt_literal(lhs, s.rhs)) {
+            rhs = s.rhs->resolved_type;
+        } else if (is_int_literal(s.lhs) && try_adapt_literal(rhs, s.lhs)) {
+            lhs = s.lhs->resolved_type;
+        }
+    }
+
+    if (lhs->kind != rhs->kind) {
+        ctx.errors.add(expr->loc, type_mismatch_error("shift expression", ctx, lhs, rhs));
+        return nullptr;
+    }
+
+    // The left operand determines the result type; the shift amount does not.
+    return lhs;
 }
 
 const ast::Type* SemanticAnalyzer::analyze_unary(const ast::UnaryExpr& u){

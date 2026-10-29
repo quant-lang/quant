@@ -114,6 +114,16 @@ public:
     void idiv_r64(R64 r);
     void div_r64(R64 r);
 
+    // shifts: REX.W D3 /digit  (count in CL)
+    void shl_r64_cl(R64 r);
+    void shr_r64_cl(R64 r);
+    void sar_r64_cl(R64 r);
+
+    // shifts: REX.W C1 /digit ib  (immediate count)
+    void shl_r64_imm8(R64 r, uint8_t imm);
+    void shr_r64_imm8(R64 r, uint8_t imm);
+    void sar_r64_imm8(R64 r, uint8_t imm);
+
     // control flow
     void setcc(Cond c, R64 byte_reg);
     // rel32 targets are patched by the caller (labels) or via relocations (calls)

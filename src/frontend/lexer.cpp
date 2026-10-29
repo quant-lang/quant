@@ -118,8 +118,20 @@ namespace quant::lx {
                 if (match('|')) return make_token(TOKEN_PIPE_PIPE);
                 if (match('=')) return make_token(TOKEN_PIPE_EQ);
                 return make_token(TOKEN_PIPE);
-            case '<': return make_token(match('=') ? TOKEN_LTE : TOKEN_LT);
-            case '>': return make_token(match('=') ? TOKEN_GTE : TOKEN_GT);
+            case '<': {
+                if(match('='))
+                    return make_token(TOKEN_LTE);
+                if(match('<'))
+                    return make_token(TOKEN_SHL);
+                return make_token(TOKEN_LT);
+            }
+            case '>': {
+                if(match('='))
+                    return make_token(TOKEN_GTE);
+                if(match('>'))
+                    return make_token(TOKEN_SHR);
+                return make_token(TOKEN_GT);
+            }
             case '+':
                 if(match('=')) return make_token(TOKEN_PLUS_EQ);
                 if(match('+')) return make_token(TOKEN_PLUS_PLUS);

@@ -185,6 +185,12 @@ namespace quant::ast {
     struct SizeofExpr {
         const Type* type;
     };
+    struct ShiftExpr{
+        Expr* lhs;
+        Expr* rhs;
+
+        bool is_left;
+    };
 
     using ExprKind = std::variant<
         IntExpr,
@@ -204,6 +210,7 @@ namespace quant::ast {
         TypeExpr,
         IndexExpr,
         StructInitExpr,
+        ShiftExpr,
         SizeofExpr
     >;
 

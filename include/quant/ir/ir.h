@@ -72,6 +72,15 @@ struct IRCast {
     ast::CastKind kind;
 };
 
+struct IRShift {
+    Reg dst;
+    Reg lhs;
+    Reg rhs;
+
+    bool is_left;
+    bool is_ar;
+};
+
 struct IRReturn {
     Reg value;
 };
@@ -186,6 +195,7 @@ using IRInst = std::variant<
     IRAlloca,
     IRLoadGlobal,
     IRStoreGlobal,
+    IRShift,
     IRLoadGlobalAddr
 >;
 

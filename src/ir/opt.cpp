@@ -138,6 +138,7 @@ void for_each_use(Inst& inst, F&& f) {
         else if constexpr (std::is_same_v<T, IRStoreElement>) { f(x.base); f(x.index); f(x.value); }
         else if constexpr (std::is_same_v<T, IRStoreLocal>)   { f(x.src); }
         else if constexpr (std::is_same_v<T, IRStoreGlobal>)  { f(x.src); }
+        else if constexpr (std::is_same_v<T, IRShift>)        { f(x.lhs); f(x.rhs); }
         else if constexpr (std::is_same_v<T, IRRegionAlloc>)  { f(x.size); }
     }, inst);
 }

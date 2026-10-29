@@ -41,6 +41,9 @@ namespace quant::ps {
             Token advance();
             bool check(TokenType type);
             bool match(TokenType type);
+            // Consume a single closing '>'. A '>>' token is split into '>' so
+            // nested generic types such as Vec<Vec<T>> parse correctly.
+            bool match_closing_angle();
             Token expect(TokenType type, const char* msg);
             Token peek(int offset);
 

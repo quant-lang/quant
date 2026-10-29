@@ -8,6 +8,7 @@
 #include <utility>
 #include <variant>
 
+#include "quant/frontend/ast.h"
 #include "quant/support/symbol_path.h"
 
 namespace quant::comptime {
@@ -221,6 +222,10 @@ std::optional<Value> Evaluator::eval_expr(const ast::Expr* expr) {
         },
         [&](const ast::TypeExpr&) -> std::optional<Value> {
             fail("a type cannot be used as a value in a compile-time expression");
+            return std::nullopt;
+        },
+        [&](const ast::ShiftExpr&) -> std::optional<Value> {
+            fail("shift operator is not supported in compile-time expressions");
             return std::nullopt;
         },
     }, expr->kind);

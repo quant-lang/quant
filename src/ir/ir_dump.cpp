@@ -183,6 +183,11 @@ void dump_inst(const IRProgram& program, const IRInst& inst) {
         [&](const IRLoadGlobalAddr& x) {
             std::cout << "loadglobaladdr r" << x.dst << ", gbl_" << x.global_id;
         },
+        [&](const IRShift& x) {
+            std::cout << "shift r" << x.dst << ", r" << x.lhs
+                      << (x.is_left ? " << " : " >> ") << "r" << x.rhs;
+            if (!x.is_left && x.is_ar) std::cout << " [arith]";
+        },
     }, inst);
 }
 
