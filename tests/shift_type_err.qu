@@ -1,0 +1,8 @@
+// Shift operands must be integers; floats and booleans are rejected.
+i32 main() {
+    f32 f = 1.5;
+    i32 a = f << 2;      // left operand is not an integer
+    i32 b = 1 >> f;      // shift amount is not an integer
+    bool c = true << 1;  // left operand is not an integer
+    return a + b;
+}

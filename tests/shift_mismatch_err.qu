@@ -1,0 +1,7 @@
+// Shift operands must have the same integer type after literal adaptation.
+i32 main() {
+    i32 a = 1;
+    u64 b = 2;
+    i32 c = a << b;
+    return c;
+}
