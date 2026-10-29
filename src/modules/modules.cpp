@@ -347,6 +347,12 @@ void ModuleManager::build_graph(Module* entry) {
                     if (!mod->path.empty()) bases.push_back(mod->path.parent_path());
                     bases.push_back(entry_dir);
                     bases.push_back(ctx.root_path);
+                    // User modules are usually imported relative to the
+                    // project root the compiler is invoked from
+                    // (e.g. `load "tests::lib"`).
+                    std::error_code cwd_ec;
+                    auto cwd = fs::current_path(cwd_ec);
+                    if (!cwd_ec) bases.push_back(cwd);
 
                     for (const auto& base : bases) {
                         fs::path primary = base / mod_rel;      // "base/std/io.qu"
