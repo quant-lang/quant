@@ -75,20 +75,18 @@ struct Lexer {
         mut u64 i = start;
         u64 end = pos;
 
-        while (i < end && is_digit(buffer[i])) {
+        for (; i < end && is_digit(buffer[i]); i++) {
             u8 d = buffer[i];
             value = value * 10.0 + (d - '0') as f64;
             inum = inum * 10 + ((d - '0') as u64);
-            i++;
         }
 
         if (i < end && buffer[i] == '.') {
             i++;
-            while (i < end && is_digit(buffer[i])) {
+            for (; i < end && is_digit(buffer[i]); i++) {
                 u8 d = buffer[i];
                 value = value + ((d - '0') as f64) * frac;
                 frac = frac * 0.1;
-                i++;
             }
         }
 

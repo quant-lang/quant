@@ -255,11 +255,9 @@ bool is_type_token(TokenType t) {
 }
 
 bool param_chain_has(*StrNode params, slice<u8> name) {
-    mut *StrNode p = params;
-    while (p != nullptr) {
+    for (mut *StrNode p = params; p != nullptr; p = p.next) {
         if (slice_eq(p.value, name))
             return true;
-        p = p.next;
     }
     return false;
 }
@@ -293,8 +291,7 @@ bool param_chain_has(*StrNode params, slice<u8> name) {
 // process_escapes - copy `raw` into the arena, expanding backslash sequences.
 str process_escapes(Region arena, slice<u8> raw) {
     mut u64 out_len = 0;
-    mut u64 i = 0;
-    while (i < raw.len()) {
+    for (mut u64 i = 0; i < raw.len(); i++) {
         u8 c = raw.get(i);
         if (c == '\\') {
             if (i + 1 >= raw.len()) {
@@ -306,12 +303,10 @@ str process_escapes(Region arena, slice<u8> raw) {
         } else {
             out_len++;
         }
-        i++;
     }
     *u8 buf = arena.bump(out_len + 1) as! *u8;
     mut u64 j = 0;
-    i = 0;
-    while (i < raw.len()) {
+    for (mut u64 i = 0; i < raw.len(); i++) {
         u8 c = raw.get(i);
         if (c == '\\') {
             if (i + 1 >= raw.len()) {
@@ -327,7 +322,6 @@ str process_escapes(Region arena, slice<u8> raw) {
             buf[j] = c;
             j++;
         }
-        i++;
     }
     buf[out_len] = 0;
     return buf as! str;
