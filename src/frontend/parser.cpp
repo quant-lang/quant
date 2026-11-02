@@ -44,14 +44,14 @@ bool is_type_token(TokenType t) {
     }
 }
 
-std::string process_escapes(const std::string& raw, SourceLocation loc) {
+std::string process_escapes(const std::string& raw, CompilerContext& ctx, SourceLocation loc) {
     std::string result;
     result.reserve(raw.size());
 
     for (size_t i = 0; i < raw.size(); ++i) {
         if (raw[i] == '\\') {
             if (i + 1 >= raw.size()) {
-                error(loc, "Invalid escape sequence at end of string");
+                ctx.errors.add(loc, loc.length, "Invalid escape sequence at end of string");
                 result += '\\';
                 continue;
             }
@@ -65,7 +65,8 @@ std::string process_escapes(const std::string& raw, SourceLocation loc) {
                 case '\'': result += '\''; break;
                 case '0':  result += '\0'; break;
                 default:
-                    error(loc, "Invalid escape sequence: \\" + std::string(1, c));
+                    ctx.errors.add(loc, loc.length,
+                                   "Invalid escape sequence: \\" + std::string(1, c));
                     result += c;
                     break;
             }
@@ -350,35 +351,42 @@ bool Parser::looks_like_generic_args() {
 // Statements
 
 ast::Stmt Parser::parse_statement() {
+    // Every statement keeps the location of its first token. Semantic and IR
+    // diagnostics use it as a fallback when a nested node has no own location.
+    const SourceLocation stmt_loc = current.loc;
+    auto make_stmt = [&](auto&& kind) {
+        return ast::Stmt{ std::forward<decltype(kind)>(kind), stmt_loc };
+    };
+
     std::vector<ast::Attribute> attrs;
     if (check(TOKEN_AT)) {
         attrs = parse_attributes();
     }
 
     if (match(TOKEN_RETURN)) {
-        return ast::Stmt{ ast::ReturnStmt{ parse_return() } };
+        return make_stmt(ast::ReturnStmt{ parse_return() });
     }
 
     if (match(TOKEN_BREAK)) {
         expect(TOKEN_SEMICOLON, "Expected ';' after break");
-        return ast::Stmt{ ast::BreakStmt{} };
+        return make_stmt(ast::BreakStmt{});
     }
 
     if (match(TOKEN_CONTINUE)) {
         expect(TOKEN_SEMICOLON, "Expected ';' after continue");
-        return ast::Stmt{ ast::ContinueStmt{} };
+        return make_stmt(ast::ContinueStmt{});
     }
 
     if (match(TOKEN_IF)) {
-        return ast::Stmt{ ast::IfStmt{ parse_if() } };
+        return make_stmt(ast::IfStmt{ parse_if() });
     }
 
     if (match(TOKEN_SWITCH)) {
-        return ast::Stmt{ ast::SwitchStmt{ parse_switch() } };
+        return make_stmt(ast::SwitchStmt{ parse_switch() });
     }
 
     if (match(TOKEN_WHILE)) {
-        return ast::Stmt{ ast::WhileStmt{ parse_while() } };
+        return make_stmt(ast::WhileStmt{ parse_while() });
     }
 
     if (match(TOKEN_FOR)) {
@@ -388,53 +396,53 @@ ast::Stmt Parser::parse_statement() {
     if (match(TOKEN_EXTERN)) {
         auto func = parse_func(true);
         func.attributes = std::move(attrs);
-        return ast::Stmt{ std::move(func) };
+        return make_stmt(std::move(func));
     }
 
     if (match(TOKEN_STRUCT)) {
         auto decl = parse_struct_decl();
         decl.attributes = std::move(attrs);
-        return ast::Stmt{ std::move(decl) };
+        return make_stmt(std::move(decl));
     }
 
     if (match(TOKEN_NAMESPACE)) {
-        return ast::Stmt{ ast::NamespaceStmt{ parse_namespace_stmt() } };
+        return make_stmt(ast::NamespaceStmt{ parse_namespace_stmt() });
     }
 
     if (match(TOKEN_MODULE)) {
         auto decl = parse_module_decl();
         decl.attributes = std::move(attrs);
-        return ast::Stmt{ std::move(decl) };
+        return make_stmt(std::move(decl));
     }
 
     if (match(TOKEN_LOAD)) {
-        return ast::Stmt{ ast::LoadStmt{ parse_load() } };
+        return make_stmt(ast::LoadStmt{ parse_load() });
     }
 
     if (match(TOKEN_USING)) {
-        return ast::Stmt{ ast::UsingStmt{ parse_using() } };
+        return make_stmt(ast::UsingStmt{ parse_using() });
     }
 
     if (match(TOKEN_REGION)){
-        return ast::Stmt{ast::RegionStmt{ parse_region() } };
+        return make_stmt(ast::RegionStmt{ parse_region() });
     }
 
     if (match(TOKEN_ENUM)) {
         auto decl = parse_enum_decl();
         decl.attributes = std::move(attrs);
-        return ast::Stmt{ std::move(decl) };
+        return make_stmt(std::move(decl));
     }
 
     switch (declaration_kind()) {
         case DeclKind::Func: {
             auto func = parse_func(false);
             func.attributes = std::move(attrs);
-            return ast::Stmt{ std::move(func) };
+            return make_stmt(std::move(func));
         }
         case DeclKind::Var: {
             auto var = parse_var_decl();
             var.attributes = std::move(attrs);
-            return ast::Stmt{ std::move(var) };
+            return make_stmt(std::move(var));
         }
         case DeclKind::None:
             break;
@@ -442,7 +450,7 @@ ast::Stmt Parser::parse_statement() {
 
     ast::Expr* expr = parse_expr(0);
     expect(TOKEN_SEMICOLON, "Expected ';' after expression");
-    return ast::Stmt{ ast::ExprStmt{ expr } };
+    return make_stmt(ast::ExprStmt{ expr });
 }
 
 DeclKind Parser::declaration_kind() {
@@ -1072,7 +1080,7 @@ ast::Expr* Parser::parse_prefix() {
     }
 
     if (match(TOKEN_STRING)) {
-        return make_expr(ctx, ast::StringExpr{ process_escapes(std::string(previous.text), previous.loc) }, previous.loc);
+        return make_expr(ctx, ast::StringExpr{ process_escapes(std::string(previous.text), ctx, previous.loc) }, previous.loc);
     }
 
     if (match(TOKEN_CHAR_LITERAL)) {
@@ -1168,7 +1176,10 @@ ast::Expr* Parser::parse_prefix() {
         return make_expr(ctx, ast::StructInitExpr{ nullptr, {}, init_args }, previous.loc);
     }
 
-    auto e = error(current.loc, current.text.length(), "Unexpected token");
+    std::string message = current.type == TOKEN_ILLEGAL
+        ? "Invalid token '" + std::string(current.text) + "'"
+        : "Unexpected token '" + std::string(current.text) + "'";
+    auto e = error(current.loc, current.text.length(), message);
     if (!check(TOKEN_EOF)) {
         advance();
     }

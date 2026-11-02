@@ -167,7 +167,6 @@ namespace quant::symb_t {
 
             // duplicate definition
             if (fs->is_defined && sym.is_defined) {
-                error("Function already defined: " + fn.name);
                 return false;
             }
 
@@ -221,13 +220,9 @@ namespace quant::symb_t {
             const auto* fn = std::get_if<ast::FuncStmt>(&value);
             if (!fn) continue;
 
-            if (!declare_method(str.name, *fn)) {
-                std::string msg = "Method redeclaration: " + str.name + "::" + fn->name;
-                error(msg);
-                if (error_bag) {
-                    error_bag->add(msg);
-                }
-            }
+            // The semantic analyzer reports duplicate methods with a source
+            // location before calling declare(); a failure here is expected.
+            declare_method(str.name, *fn);
         }
 
         return true;

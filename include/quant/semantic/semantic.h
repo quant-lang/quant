@@ -40,7 +40,7 @@ class SemanticAnalyzer {
         void analyze_stmt(ast::Stmt* stmt);
         const ast::Type* analyze_expr(ast::Expr* expr);
         const ast::Type* analyze_block(const ast::Block* block);
-        const ast::Type* resolve_lvalue(ast::Expr* expr);
+        const ast::Type* resolve_lvalue(ast::Expr* expr, const SourceLocation& loc);
         void collect_declarations(const std::vector<ast::Stmt*>& stmts);
 
         // Canonicalize unqualified struct type names to their module-qualified
@@ -48,28 +48,31 @@ class SemanticAnalyzer {
         // types used inside the defining module (e.g. cmp::ordering).
         const ast::Type* canonicalize_struct_type(const ast::Type* type);
 
-        void analyze_var_decl(ast::VarDecl& var);
-        void analyze_struct_decl(const ast::StructDecl& str);
-        void analyze_enum_decl(const ast::EnumDecl& enm);
+        void analyze_var_decl(ast::VarDecl& var, const SourceLocation& loc);
+        void analyze_struct_decl(const ast::StructDecl& str, const SourceLocation& loc);
+        void analyze_enum_decl(const ast::EnumDecl& enm, const SourceLocation& loc);
         void analyze_namespace_stmt(const ast::NamespaceStmt& stmt);
         void analyze_expr_stmt(const ast::ExprStmt& expr);
-        void analyze_return(const ast::ReturnStmt& ret);
-        void analyze_break(const ast::BreakStmt& br);
-        void analyze_continue(const ast::ContinueStmt& cont);
+        void analyze_return(const ast::ReturnStmt& ret, const SourceLocation& loc);
+        void analyze_break(const ast::BreakStmt& br, const SourceLocation& loc);
+        void analyze_continue(const ast::ContinueStmt& cont, const SourceLocation& loc);
         void analyze_func(const ast::FuncStmt& func, const SourceLocation& loc = {});
         void analyze_if(const ast::IfStmt& stmt);
         void analyze_else_if(const ast::ElseIfStmt& stmt);
         void analyze_while(const ast::WhileStmt& stmt);
         void check_condition(const ast::Expr* condition, const std::string& what);
-        void analyze_switch(ast::SwitchStmt& stmt);
+        void analyze_switch(ast::SwitchStmt& stmt, const SourceLocation& loc);
         void analyze_region(const ast::RegionStmt& reg);
-        void analyze_using(const ast::UsingStmt& us);
-        void analyze_attribute(const ast::Attribute& attribute, const attrs::AttributeTarget target);
-        void check_visibility(const symb_t::Symbol& sym, const std::string& context);
+        void analyze_using(const ast::UsingStmt& us, const SourceLocation& loc);
+        void analyze_attribute(const ast::Attribute& attribute, const attrs::AttributeTarget target,
+                               const SourceLocation& loc);
+        void check_visibility(const symb_t::Symbol& sym, const std::string& context,
+                              const SourceLocation& loc);
         void check_arg_guard(const ast::Expr* arg, const std::string& call_name);
         const ast::Type* analyze_method_call(const ast::CallExpr& call,
                                              const std::string& struct_name,
-                                             const std::string& method_name);
+                                             const std::string& method_name,
+                                             const SourceLocation& loc);
         const ast::Type* method_field_type(const std::string& name) const;
 
         // Materialize a concrete generic struct instantiation: declares the
@@ -81,16 +84,16 @@ class SemanticAnalyzer {
                                          const types::GenericStructDef* def);
 
         const ast::Type* analyze_var(const ast::VarExpr&, const ast::Expr*);
-        const ast::Type* analyze_assign(const ast::AssignExpr&);
+        const ast::Type* analyze_assign(const ast::AssignExpr&, const SourceLocation& loc);
         const ast::Type* analyze_binary(const ast::BinaryExpr&, const ast::Expr* expr);
-        const ast::Type* analyze_unary(const ast::UnaryExpr&);
-        const ast::Type* analyze_call(const ast::CallExpr&);
-        const ast::Type* analyze_field(const ast::FieldExpr&);
-        const ast::Type* analyze_namespace(const ast::NamespaceExpr&);
-        const ast::Type* analyze_cast(const ast::CastExpr&);
-        const ast::Type* analyze_index(const ast::IndexExpr&);
-        const ast::Type* analyze_struct_init(const ast::StructInitExpr&);
-        const ast::Type* analyze_sizeof(const ast::SizeofExpr&);
+        const ast::Type* analyze_unary(const ast::UnaryExpr&, const SourceLocation& loc);
+        const ast::Type* analyze_call(const ast::CallExpr&, const SourceLocation& loc);
+        const ast::Type* analyze_field(const ast::FieldExpr&, const SourceLocation& loc);
+        const ast::Type* analyze_namespace(const ast::NamespaceExpr&, const SourceLocation& loc);
+        const ast::Type* analyze_cast(const ast::CastExpr&, const SourceLocation& loc);
+        const ast::Type* analyze_index(const ast::IndexExpr&, const SourceLocation& loc);
+        const ast::Type* analyze_struct_init(const ast::StructInitExpr&, const SourceLocation& loc);
+        const ast::Type* analyze_sizeof(const ast::SizeofExpr&, const SourceLocation& loc);
         const ast::Type* analyze_shift(const ast::ShiftExpr&, const ast::Expr* expr);
 
         std::optional<int64_t> try_eval_const(const ast::Expr* expr);

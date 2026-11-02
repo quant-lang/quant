@@ -751,6 +751,8 @@ void IRGenerator::gen_module(const quant::modules::Module& mod) {
     for (const auto* stmt : mod.ast) {
         if (!stmt) continue;
 
+        ErrorLocationScope location_scope(ctx.errors, stmt->loc);
+
         if (std::holds_alternative<ast::LoadStmt>(stmt->kind) ||
             std::holds_alternative<ast::ModuleDecl>(stmt->kind) ||
             std::holds_alternative<ast::UsingStmt>(stmt->kind)) {
@@ -935,6 +937,8 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
     if (current_terminated) {
         return;
     }
+
+    ErrorLocationScope location_scope(ctx.errors, stmt.loc);
 
     std::visit(overloaded{
         [&](const ast::ExprStmt& node) {
@@ -1370,6 +1374,8 @@ void IRGenerator::gen_region(const ast::RegionStmt& reg) {
 }
 
 uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
+    ErrorLocationScope location_scope(ctx.errors, expr.loc);
+
     auto lookup_local = [&](const std::string& name, uint32_t& local_out, const ast::Type*& type_out) -> bool {
         for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
             auto it = local_scopes[i].find(name);
