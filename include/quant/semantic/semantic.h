@@ -56,7 +56,7 @@ class SemanticAnalyzer {
         void analyze_return(const ast::ReturnStmt& ret);
         void analyze_break(const ast::BreakStmt& br);
         void analyze_continue(const ast::ContinueStmt& cont);
-        void analyze_func(const ast::FuncStmt& func);
+        void analyze_func(const ast::FuncStmt& func, const SourceLocation& loc = {});
         void analyze_if(const ast::IfStmt& stmt);
         void analyze_else_if(const ast::ElseIfStmt& stmt);
         void analyze_while(const ast::WhileStmt& stmt);

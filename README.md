@@ -173,8 +173,8 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 * [ ] Show the source token in every error. Improve unclear messages, for example "Undefined qualified symbol" should say which symbol was not found.
 * [x] Unify all type mismatch errors. Always show the expected and received types.
 * [x] Stop printing internal type IDs. Bad examples: `Type mismatch in assignment: Node vs 4` and `14 vs 4`.
-* [ ] Fix the wrong error for an undefined variable used as the right-hand side of a variable initializer.
-* [ ] Keep reporting independent semantic errors. For example, "Cannot assign to immutable variable" must not hide "Missing return in non-void function".
+* [x] Fix the wrong error for an undefined variable used as the right-hand side of a variable initializer.
+* [x] Keep reporting independent semantic errors. For example, "Cannot assign to immutable variable" must not hide "Missing return in non-void function".
 
 ### P1 - Parser recovery and type checks
 

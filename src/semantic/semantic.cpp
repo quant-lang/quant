@@ -136,6 +136,48 @@ struct overloaded : Ts... {
 template<class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 
+bool block_terminates(const ast::Block* block);
+
+bool else_if_chain_terminates(const ast::ElseIfStmt* branch) {
+    while (branch) {
+        if (!block_terminates(branch->then_block)) return false;
+        if (!branch->next) return block_terminates(branch->else_block);
+        branch = branch->next;
+    }
+    return true;
+}
+
+bool stmt_terminates(const ast::Stmt& stmt) {
+    return std::visit(overloaded{
+        [](const ast::ReturnStmt&) { return true; },
+        [](const ast::BreakStmt&) { return true; },
+        [](const ast::ContinueStmt&) { return true; },
+        [](const ast::IfStmt& n) {
+            if (!block_terminates(n.then_block)) return false;
+            if (n.else_if) return else_if_chain_terminates(n.else_if);
+            return block_terminates(n.else_block);
+        },
+        [](const ast::SwitchStmt& n) {
+            if (!block_terminates(n.default_block)) return false;
+            for (const auto& c : n.cases) {
+                if (!block_terminates(c.body)) return false;
+            }
+            return true;
+        },
+        [](const ast::BlockStmt& n) { return block_terminates(n.body); },
+        [](const ast::RegionStmt& n) { return block_terminates(n.body); },
+        [](const auto&) { return false; }
+    }, stmt.kind);
+}
+
+bool block_terminates(const ast::Block* block) {
+    if (!block) return false;
+    for (const auto* stmt : block->stmts) {
+        if (stmt && stmt_terminates(*stmt)) return true;
+    }
+    return false;
+}
+
 bool types_equal(const ast::Type* a, const ast::Type* b) {
     if (a == b) return true;
     if (!a || !b) return false;
@@ -1160,7 +1202,7 @@ void SemanticAnalyzer::analyze_stmt(ast::Stmt* stmt) {
         [&](const ast::ReturnStmt& n) { analyze_return(n); },
         [&](const ast::BreakStmt& n) { analyze_break(n); },
         [&](const ast::ContinueStmt& n) { analyze_continue(n); },
-        [&](const ast::FuncStmt& n) { analyze_func(n); },
+        [&](const ast::FuncStmt& n) { analyze_func(n, stmt->loc); },
         [&](const ast::IfStmt& n) { analyze_if(n); },
         [&](const ast::WhileStmt& n) { analyze_while(n); },
         [&](const ast::BlockStmt& n) { analyze_block(n.body); },
@@ -1314,6 +1356,7 @@ void SemanticAnalyzer::analyze_var_decl(ast::VarDecl& var) {
         }
     }
 
+    bool initializer_ok = true;
     if (var.value) {
         // For standalone struct init (type_ref == nullptr), pass the variable's declared type
         if (auto* si = std::get_if<ast::StructInitExpr>(&var.value->kind)) {
@@ -1323,29 +1366,35 @@ void SemanticAnalyzer::analyze_var_decl(ast::VarDecl& var) {
             }
         }
         const ast::Type* value_type = analyze_expr(var.value);
-        if (!value_type) return;
-
-        AssignCheck chk = check_assignable_value(ctx, resolved_type, var.value);
-        if (chk != AssignCheck::Ok) {
-            if (chk == AssignCheck::NullPtrToReference) return; // already reported
-            const std::string context = "variable initialization of '" + var.name + "'";
-            if (chk == AssignCheck::LiteralOutOfRange)
-                ctx.errors.add(var.value->loc, literal_range_error(context, ctx, resolved_type, value_type));
-            else
-                ctx.errors.add(var.value->loc, type_mismatch_error(context, ctx, resolved_type, value_type));
-            return;
+        if (!value_type) {
+            initializer_ok = false;
+        } else {
+            AssignCheck chk = check_assignable_value(ctx, resolved_type, var.value);
+            if (chk != AssignCheck::Ok) {
+                initializer_ok = false;
+                if (chk != AssignCheck::NullPtrToReference) {
+                    const std::string context = "variable initialization of '" + var.name + "'";
+                    if (chk == AssignCheck::LiteralOutOfRange)
+                        ctx.errors.add(var.value->loc, literal_range_error(context, ctx, resolved_type, value_type));
+                    else
+                        ctx.errors.add(var.value->loc, type_mismatch_error(context, ctx, resolved_type, value_type));
+                }
+            }
         }
     } else if (!var.is_mut && !has_init) {
         ctx.errors.add("Immutable variable must be initialized: " + var.name);
-        return;
+        initializer_ok = false;
     }
 
-    // Declare with resolved type
+    // Declare with resolved type. A declaration with a broken initializer is
+    // still declared, so later uses do not turn into bogus "undefined
+    // variable" errors. It is marked initialized because its own error was
+    // already reported.
     const bool var_may_be_null = resolved_type && resolved_type->kind == TypeKind::Pointer
         && (!var.value || may_be_null(ctx, var.value));
     if (!ctx.symbols.declare_symbol(var.name, symb_t::Symbol{
         var.name,
-        symb_t::VarSymbol{resolved_type, var.is_mut, var.value != nullptr, {}, nullptr, var_may_be_null},
+        symb_t::VarSymbol{resolved_type, var.is_mut, var.value != nullptr || !initializer_ok, {}, nullptr, var_may_be_null},
         var.attributes
     })) {
         ctx.errors.add("Variable already declared: " + var.name);
@@ -1501,7 +1550,7 @@ void SemanticAnalyzer::analyze_continue(const ast::ContinueStmt&) {
     }
 }
 
-void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
+void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func, const SourceLocation& loc) {
     // Functions declared inside a struct carry the owning struct's name.
     // Resolve the struct and make sure this function is actually bound to it.
     const symb_t::StructSymbol* method_sym = nullptr;
@@ -1642,6 +1691,19 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
     }
 
     analyze_block(func.body);
+
+    if (func.return_type->kind != TypeKind::Void && !block_terminates(func.body)) {
+        SourceLocation missing_return_loc = loc;
+        if (missing_return_loc.line <= 0 && !func.body->stmts.empty()) {
+            missing_return_loc = func.body->stmts.front()->loc;
+        }
+        const std::string message = "Missing return in non-void function: " + func.name;
+        if (missing_return_loc.line > 0) {
+            ctx.errors.add(missing_return_loc, message);
+        } else {
+            ctx.errors.add(message);
+        }
+    }
 
     current_function_return_type = prev_return_type;
     current_method_struct = saved_method_struct;
