@@ -202,6 +202,7 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 * [ ] Normal per-file compilation with per-file IR and standard linking.
 * [ ] Build system.
 * [ ] Fix the `scripts/check_errors.py` summary. It prints `unexpected_ok` in the `UNEXPECTED exit codes` line, so compiler crashes are listed but counted as 0.
+* [ ] refactor semantic.cpp and ir.cpp
 
 ---
 ## Self-hosting
