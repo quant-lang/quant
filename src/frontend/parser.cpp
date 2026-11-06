@@ -269,14 +269,16 @@ ErrorBag::ParserException Parser::error(const SourceLocation& loc, int length, c
 }
 
 void Parser::sync() {
-    int nesting = 0;
-    while (!check(TOKEN_EOF)) {
-        if (previous.type == TOKEN_SEMICOLON && nesting == 0) return;
+    for (int nesting = 0; !check(TOKEN_EOF);) {
+        if (previous.type == TOKEN_SEMICOLON && nesting == 0)
+            return;
         if (check(TOKEN_RBRACE)) {
-            if (nesting == 0) return;
+            if (nesting == 0)
+                return;
             nesting--;
         }
-        if (check(TOKEN_LBRACE)) nesting++;
+        if (check(TOKEN_LBRACE))
+            nesting++;
         switch (current.type) {
             case TOKEN_STRUCT: case TOKEN_IF:
             case TOKEN_WHILE: case TOKEN_FOR: case TOKEN_SWITCH: case TOKEN_RETURN: case TOKEN_NAMESPACE:
@@ -285,6 +287,27 @@ void Parser::sync() {
             case TOKEN_EXTERN: case TOKEN_REGION: case TOKEN_ENUM:
                 if (nesting == 0) return;
             default: break;
+        }
+        advance();
+    }
+}
+
+void Parser::sync_until(std::initializer_list<TokenType> stops) {
+    /*
+     * Switch cases and enum bodies don't create blocks, so sync() may stop at
+     * the wrong '}'. Skip to a recovery token while keeping track of nested braces.
+    */
+    for(int nesting = 0; !check(TOKEN_EOF); ){
+        if (nesting == 0) {
+            for (TokenType stop : stops) {
+                if (check(stop))
+                    return;
+            }
+        }
+        if (check(TOKEN_LBRACE)) {
+            nesting++;
+        } else if (check(TOKEN_RBRACE)) {
+            nesting--;
         }
         advance();
     }
@@ -766,28 +789,35 @@ ast::SwitchStmt Parser::parse_switch() {
     ret.default_block = nullptr;
 
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
-if (match(TOKEN_CASE)) {
-            ast::CaseStmt cs;
-            while (true) {
-                cs.values.push_back(parse_expr(0));
-                expect(TOKEN_COLON, "Expected ':' after case value");
-                if (!check(TOKEN_CASE)) break;
-                advance(); // consume the next 'case' keyword (shared body)
+        if (match(TOKEN_CASE)) {
+            try {
+                ast::CaseStmt cs;
+                while (true) {
+                    cs.values.push_back(parse_expr(0));
+                    expect(TOKEN_COLON, "Expected ':' after case value");
+                    if (!check(TOKEN_CASE)) break;
+                    advance(); // consume the next 'case' keyword (shared body)
+                }
+                cs.body = parse_statement_body();
+                ret.cases.push_back(std::move(cs));
             }
-            cs.body = parse_statement_body();
-            ret.cases.push_back(std::move(cs));
+            catch (const ErrorBag::ParserException&) {
+                sync_until({ TOKEN_CASE, TOKEN_DEFAULT, TOKEN_RBRACE });
+            }
         } else if (match(TOKEN_DEFAULT)) {
-            if (ret.default_block) {
-                error(previous.loc, previous.text.length(), "Multiple 'default' blocks in switch");
+            try {
+                if (ret.default_block) {
+                    error(previous.loc, previous.text.length(), "Multiple 'default' blocks in switch");
+                }
+                expect(TOKEN_COLON, "Expected ':' after default");
+                ret.default_block = parse_statement_body();
             }
-            expect(TOKEN_COLON, "Expected ':' after default");
-            ret.default_block = parse_statement_body();
+            catch (const ErrorBag::ParserException&) {
+                sync_until({ TOKEN_CASE, TOKEN_DEFAULT, TOKEN_RBRACE });
+            }
         } else {
             error(current.loc, current.text.length(), "Expected 'case' or 'default' in switch body");
-            while (!check(TOKEN_EOF) && !check(TOKEN_CASE) &&
-                   !check(TOKEN_DEFAULT) && !check(TOKEN_RBRACE)) {
-                advance();
-            }
+            sync_until({ TOKEN_CASE, TOKEN_DEFAULT, TOKEN_RBRACE });
         }
     }
 
@@ -896,11 +926,19 @@ ast::EnumDecl Parser::parse_enum_decl() {
     expect(TOKEN_LBRACE, "Expected '{' after enum name");
 
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
-        Token name = expect(TOKEN_IDENT, "Expected variant name");
-        ret.variants.push_back(std::string(name.text));
+        try {
+            Token name = expect(TOKEN_IDENT, "Expected variant name");
+            ret.variants.push_back(std::string(name.text));
 
-        if (!check(TOKEN_RBRACE)) {
-            expect(TOKEN_COMMA, "Expected ',' after variant");
+            if (!check(TOKEN_RBRACE)) {
+                expect(TOKEN_COMMA, "Expected ',' after variant");
+            }
+        }
+        catch (const ErrorBag::ParserException&) {
+            sync_until({ TOKEN_COMMA, TOKEN_RBRACE });
+            // A comma found by the recovery is the separator for the next
+            // variant, so consume it and resume the normal loop.
+            match(TOKEN_COMMA);
         }
     }
 

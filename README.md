@@ -178,7 +178,7 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 
 ### P1 - Parser recovery and type checks
 
-* [ ] Add parser recovery to `switch` and `enum` bodies, like the recovery already used for structs. Braces in these constructs are not a block, and one bad case should not create many follow-up errors.
+* [x] Add parser recovery to `switch` and `enum` bodies, like the recovery already used for structs. Braces in these constructs are not a block, and one bad case should not create many follow-up errors.
 * [ ] Continue semantic analysis after parse errors when it is safe, so more independent errors are reported.
 * [ ] Check that struct fields are initialized before they are read. Variables already have this check, but fields do not.
 * [x] Fix the development-build module root. `tests/attr_hide_pub.qu` cannot load `tests::lib_hidden` because `root_path` resolves to `build/bin`.

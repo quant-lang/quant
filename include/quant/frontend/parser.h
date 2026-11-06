@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <initializer_list>
 #include <vector>
 #include <queue>
 
@@ -34,6 +35,7 @@ namespace quant::ps {
             const std::vector<std::string>* current_type_params = nullptr;
 
             void sync();
+            void sync_until(std::initializer_list<TokenType> stops);
 
             ErrorBag::ParserException error(const SourceLocation& loc, int length, const std::string& msg);
 
