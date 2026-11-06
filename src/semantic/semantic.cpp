@@ -2508,6 +2508,18 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b, cons
         return nullptr;
     }
 
+    // Raw pointers are addresses, so allow bitwise masking/combining them.
+    // The result stays a pointer; mixed pointer types require an explicit cast.
+    if (l->kind == TypeKind::Pointer && r->kind == TypeKind::Pointer &&
+        (b.op == ast::BinaryOp::BitAnd || b.op == ast::BinaryOp::BitOr)) {
+        if (!types_equal(l, r)) {
+            ctx.errors.add(expr->loc,
+                type_mismatch_error("pointer bitwise expression", ctx, l, r));
+            return nullptr;
+        }
+        return l;
+    }
+
     // Non-numeric operands: only equality comparisons are supported
     if (types_equal(l, r)) {
         if (b.op == ast::BinaryOp::Eq || b.op == ast::BinaryOp::Neq)

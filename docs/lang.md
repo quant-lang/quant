@@ -320,6 +320,8 @@ Note: a reference cannot be taken to a builtin value type (`i32`, `bool`, `f64`,
 &    (bitwise AND)
 |    (bitwise OR)
 ```
+`&` and `|` also accept two raw pointers of the same type. The pointers are
+treated as plain addresses and the result keeps the pointer type.
 
 ### Logical (result is `bool`)
 ```

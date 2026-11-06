@@ -1,0 +1,12 @@
+// Bitwise operators on raw pointers treat them as plain addresses.
+i32 main() {
+    mut *i32 lcr = nullptr;
+    lcr |= ((1 << 7) as! *i32);
+    lcr &= (0xFF as! *i32);
+
+    u64 bits = lcr as! u64;
+    if (bits != 128) {
+        return 1;
+    }
+    return 0;
+}
