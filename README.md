@@ -6,7 +6,7 @@ The compiler uses a native backend (IR -> machine code, no external assembler):
 ELF executables on Linux and other ELF-based OSes, PE32+ on Windows.
 x86-64 and AArch64 are supported; third-party OS ABIs are welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
-> Note: Quant is still in development and not everything is done
+> Note: Quant is still in development and not everything is complete
 
 ---
 
@@ -168,7 +168,7 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 ### P0 - Fix first: crashes, broken output, and diagnostics
 
 * [x] Fix the compiler crash on malformed declarations. `tests/bad_function_err.qu` currently exits with a crash code instead of a normal compile error.
-* [x] Fix Windows `.exe` files that are shorter than their `.rodata` section. `src/backend/pe_writer.cpp` writes the aligned `.rodata` size in the header but does not pad the last section. Windows then fails with `WinError 193`. Reproduce with `tests/else_if_str_test.qu -O0` or `tests/main.qu -O2`. This also breaks `scripts/check_opt.py` and `scripts/check_comptime.py`.
+* [x] Fix Windows `.exe` files that are shorter than their `.rodata` section. `qu-backend/src/backend/pe_writer.cpp` writes the aligned `.rodata` size in the header but does not pad the last section. Windows then fails with `WinError 193`. Reproduce with `tests/else_if_str_test.qu -O0` or `tests/main.qu -O2`. This also breaks `scripts/check_opt.py` and `scripts/check_comptime.py`.
 * [x] Use one diagnostic format everywhere: show the location and source token first, then the message.
 * [x] Show the source token in every error. Improve unclear messages, for example "Undefined qualified symbol" should say which symbol was not found.
 * [x] Unify all type mismatch errors. Always show the expected and received types.

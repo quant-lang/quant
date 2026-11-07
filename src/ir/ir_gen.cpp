@@ -6,7 +6,7 @@
 #include "quant/ir/ir_gen.h"
 #include "quant/attributes/attributes.h"
 #include "quant/frontend/ast.h"
-#include "quant/ir/ir.h"
+#include "qu-ir/ir.h"
 #include "quant/support/symbol_path.h"
 #include "utils/logger.h"
 

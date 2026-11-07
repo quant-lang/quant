@@ -33,7 +33,7 @@
 #include <string>
 #include <vector>
 
-#include "quant/backend/targets.h"
+#include "backend/targets.h"
 #include "quant/frontend/lexer.h"
 #include "quant/frontend/parser.h"
 #include "quant/ir/ir_gen.h"

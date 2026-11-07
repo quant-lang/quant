@@ -533,8 +533,8 @@ On Linux, the native backend links with `ld` (x86-64) or `ld.lld` (AArch64).
 |-----------------|--------------------------------------------------|
 | `src/frontend/` | Lexer (`lexer.cpp`), Parser (`parser.cpp`), AST (`ast.cpp`) |
 | `src/semantic/` | Semantic analysis, symbol table, type checking   |
-| `src/ir/`       | IR generation (`ir_gen.cpp`), IR optimizer (`opt.cpp`), IR dump |
-| `src/backend/`  | Instruction selection (x86-64 `isel.cpp`, AArch64 `aarch64_isel.cpp`), emitters (`fasmcodegen.cpp`, `aarch_64.cpp`), ELF writer, PE writer |
+| `src/ir/`       | IR generation (`ir_gen.cpp`), IR optimizer (`opt.cpp`) |
+| `../qu-backend/` | Separate library: QUIR definitions, instruction selection (x86-64 `isel.cpp`, AArch64 `aarch64_isel.cpp`), emitters, ELF writer, PE writer |
 | `src/modules/`  | Module loading                                   |
 | `src/support/`  | Type context, symbol path utilities              |
 | `src/utils/`    | Logger, error reporting, file manager            |
@@ -546,11 +546,11 @@ On Linux, the native backend links with `ld` (x86-64) or `ld.lld` (AArch64).
 - `src/semantic/semantic.cpp` (2852 lines) - the largest file; all type checking, attribute validation, generic instantiation.
 - `src/ir/ir_gen.cpp` (2081 lines) - IR generation from AST.
 - `include/quant/frontend/ast.h` - all AST node definitions.
-- `include/quant/ir/ir.h` - all IR instruction definitions.
+- `qu-backend/include/qu-ir/ir.h` - all IR instruction definitions.
 - `src/ir/opt.cpp` - target-independent IR optimizer (`-O0`..`-O3`): constant folding, constant/copy propagation through locals, CFG cleanup, compile-time evaluation of pure loops, dead code / dead store elimination, whole-program pruning. Temps are single-assignment; locals are mutable slots written only by `IRStoreLocal` (a local whose address is taken via `IRAddrOf` is never tracked).
 - `include/quant/attributes/attributes.h` - attribute registry.
-- `src/backend/aarch64_isel.cpp` (~950 lines) - AArch64 instruction selection and code generation.
-- `src/backend/aarch_64.cpp` - AArch64 emitter (binary encoding for all instructions).
+- `qu-backend/src/backend/aarch64_isel.cpp` (~950 lines) - AArch64 instruction selection and code generation.
+- `qu-backend/src/backend/aarch_64.cpp` - AArch64 emitter (binary encoding for all instructions).
 
 ### IR
 
@@ -558,7 +558,7 @@ Register-based IR with labels. Key instructions: `IRLoadConst`, `IRBinary`, `IRC
 
 ### Data sections
 
-`mc::Object` (include/quant/backend/mc.h) carries two data buffers, not one:
+`mc::Object` (qu-backend/include/backend/mc.h) carries two data buffers, not one:
 
 - `data` — mutable globals (`gbl_N`), `.data` (`SHF_ALLOC | SHF_WRITE`).
 - `rodata` — string literals (`str_N`), read-only (`SHF_ALLOC` on ELF, no `MEM_WRITE` on PE).
@@ -587,7 +587,7 @@ Functions returning structs pass a hidden pointer as the first argument. The cal
 
 ### Multi-target support
 
-`quant::codegen::Target` (`include/quant/backend/target.h`) describes a target architecture and OS. Each target provides its ABI, syscall mapping, runtime and stdlib configuration, output format, and linker settings.
+`quant::codegen::Target` (`qu-backend/include/backend/target.h`) describes a target architecture and OS. Each target provides its ABI, syscall mapping, runtime and stdlib configuration, output format, and linker settings.
 
 Currently supported targets:
 
@@ -596,7 +596,7 @@ Currently supported targets:
 * `x86_64-windows`
 * `aarch64-zeropoint`
 
-CMake builds only the targets selected by `QUANT_BACKENDS`. Unknown targets fail configuration, and the default host target must be enabled.
+`qu-backend`'s CMake builds only the targets selected by `QUANT_BACKENDS`. Unknown targets fail configuration, and the default host target must be enabled.
 
 The compiler keeps target-specific logic inside the backend:
 
@@ -612,7 +612,7 @@ The compiler keeps target-specific logic inside the backend:
 
 Use `scripts/check_target_baseline.py` to compare generated binaries and diagnostics before and after backend changes.
 
-Adding a new target requires registering its name in `QUANT_KNOWN_BACKENDS` (CMake) and adding a guarded factory declaration and a row in the explicit table in `src/backend/registry.cpp`. New architectures or object formats may also require extending the corresponding enums and generators.
+Adding a new target requires registering its name in `QUANT_BACKEND_KNOWN_TARGETS` (`qu-backend/CMakeLists.txt`) and adding a guarded factory declaration and a row in the explicit table in `qu-backend/src/backend/registry.cpp`. New architectures or object formats may also require extending the corresponding enums and generators.
 
 
 ### ZeroPoint target

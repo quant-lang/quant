@@ -25,7 +25,7 @@
 
 #include "quant/ir/ir_gen.h"
 #include "quant/ir/opt.h"
-#include "quant/backend/native_backend.h"
+#include "backend/native_backend.h"
 
 #include "quant/modules/module.h"
 #include "quant/linker/linker.h"
@@ -257,7 +257,7 @@ int main(int argc, char **argv)
             // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto pe_bytes = nativeBackend.generate(irgen.program, ctx, *opts.target);
+                auto pe_bytes = nativeBackend.generate(irgen.program, ctx.emit_start, *opts.target);
                 if (!write_output(exe_path, pe_bytes)) return 1;
             }
         } else if (opts.static_lib) {
@@ -268,7 +268,7 @@ int main(int argc, char **argv)
 
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto elf_bytes = nativeBackend.generate(irgen.program, ctx, *opts.target);
+                auto elf_bytes = nativeBackend.generate(irgen.program, ctx.emit_start, *opts.target);
                 if (!write_output(obj_path, elf_bytes)) return 1;
             }
 
@@ -294,7 +294,7 @@ int main(int argc, char **argv)
 
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto elf_bytes = nativeBackend.generate(irgen.program, ctx, *opts.target);
+                auto elf_bytes = nativeBackend.generate(irgen.program, ctx.emit_start, *opts.target);
                 if (!write_output(obj_path, elf_bytes)) return 1;
             }
 

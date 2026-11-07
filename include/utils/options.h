@@ -6,8 +6,8 @@
 #include <stdexcept>
 
 #include "logger.h"
-#include "quant/backend/mc.h"
-#include "quant/backend/targets.h"
+#include "backend/mc.h"
+#include "backend/targets.h"
 
 using namespace utils::logger;
 

@@ -47,20 +47,20 @@ Use `AI_CONTEXT.md` as the main context for AI tools working with Quant.
 
 ## Adding an OS ABI
 
-Each `quant::codegen::Target` represents one architecture/OS combination. Target-specific code lives in `src/backend/targets/`.
+Each `quant::codegen::Target` represents one architecture/OS combination. Target-specific code lives in the separate `qu-backend` [repository]("https://github.com/quant-lang/qu-backend"), under `src/backend/targets/`.
 
 To add a new OS ABI:
 
 1. **Add a target implementation**
 
-   * Create `src/backend/targets/<arch>_<os>.cpp`.
+   * Create `qu-backend/src/backend/targets/<arch>_<os>.cpp`.
    * Implement `Target` and add a `make_<arch>_<os>()` factory.
    * Keep architecture-specific instruction lowering in the existing instruction selectors.
 
 2. **Register the target**
 
-   * Add its name to `QUANT_KNOWN_BACKENDS` in `CMakeLists.txt`.
-   * Register the target in `src/backend/registry.cpp`.
+   * Add its name to `QUANT_BACKEND_KNOWN_TARGETS` in `qu-backend/CMakeLists.txt`.
+   * Register the target in `qu-backend/src/backend/registry.cpp`.
    * Reuse existing architecture, OS, and object-format enums when possible.
 
 3. **Implement the OS ABI**

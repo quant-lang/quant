@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ir.h"
+#include "qu-ir/ir.h"
 #include "quant/frontend/ast.h"
 #include "quant/support/compiler_context.h"
 #include "quant/modules/module.h"

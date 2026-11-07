@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "quant/ir/ir.h"
+#include "qu-ir/ir.h"
 
 namespace quant::codegen {
 

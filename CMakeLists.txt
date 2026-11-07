@@ -38,67 +38,44 @@ set(QUANT_AR "" CACHE STRING
     "Archiver for the libqu build: ar, llvm-ar, or a path (empty: ar)")
 
 # ---------------------------------------------------------------------------
-# Backends and targets
+# Native backend
 #
-# QUANT_BACKENDS lists what the compiler can emit; only those code generators
-# are compiled in. --target then picks one of them at runtime (registry.cpp).
+# qu-backend owns the list of supported targets and validates QUANT_BACKENDS
+# and QUANT_DEFAULT_TARGET. It defines the quant-backend target, which the
+# compiler links below.
 # ---------------------------------------------------------------------------
 
-set(QUANT_KNOWN_BACKENDS "x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint")
+set(QUANT_BACKEND_SOURCE_DIR "" CACHE PATH
+    "Local checkout of qu-backend (empty: fetch from Git)")
+set(QUANT_BACKEND_GIT_REPOSITORY
+    "https://github.com/quant-lang/qu-backend.git" CACHE STRING
+    "Git repository for qu-backend when no local checkout is used")
+set(QUANT_BACKEND_GIT_TAG "main" CACHE STRING
+    "Git tag or branch for qu-backend when no local checkout is used")
 
-# Target metadata (name, arch, OS) and factory guards live in the explicit
-# table in src/backend/registry.cpp; CMake only decides which factories exist
-# via the QUANT_TARGET_<key> definitions below. No static registration.
-
-if(NOT DEFINED QUANT_BACKENDS OR QUANT_BACKENDS STREQUAL "")
-  set(QUANT_BACKENDS "${QUANT_KNOWN_BACKENDS}")
-endif()
-
-foreach(_backend IN LISTS QUANT_BACKENDS)
-  if(NOT _backend IN_LIST QUANT_KNOWN_BACKENDS)
-    message(FATAL_ERROR
-      "Unknown backend '${_backend}' in QUANT_BACKENDS. Known backends: ${QUANT_KNOWN_BACKENDS}")
-  endif()
-endforeach()
-
-message(STATUS "Quant backends: ${QUANT_BACKENDS}")
-
-# Default target for command lines without --target. Set this for builds whose
-# host backend is not compiled in (e.g. a ZeroPoint-only compiler).
-set(QUANT_DEFAULT_TARGET "" CACHE STRING
-    "Default --target when none is passed (must be one of QUANT_BACKENDS)")
-
-if(QUANT_DEFAULT_TARGET)
-  if(NOT QUANT_DEFAULT_TARGET IN_LIST QUANT_KNOWN_BACKENDS)
-    message(FATAL_ERROR
-      "Unknown backend '${QUANT_DEFAULT_TARGET}' in QUANT_DEFAULT_TARGET. Known backends: ${QUANT_KNOWN_BACKENDS}")
-  endif()
-  if(NOT QUANT_DEFAULT_TARGET IN_LIST QUANT_BACKENDS)
-    message(FATAL_ERROR
-      "Default target '${QUANT_DEFAULT_TARGET}' must also be enabled in QUANT_BACKENDS (${QUANT_BACKENDS})")
+if(NOT QUANT_BACKEND_SOURCE_DIR)
+  get_filename_component(_quant_backend_sibling
+      "${PROJECT_SOURCE_DIR}/../qu-backend" ABSOLUTE)
+  if(EXISTS "${_quant_backend_sibling}/CMakeLists.txt")
+    set(QUANT_BACKEND_SOURCE_DIR "${_quant_backend_sibling}")
   endif()
 endif()
 
-# Compile-time feature flags derived from the backend list.
-set(QUANT_HAS_X86_64 OFF)
-set(QUANT_HAS_AARCH64 OFF)
-set(QUANT_HAS_PE OFF)
-set(QUANT_HAS_ELF OFF)
+if(QUANT_BACKEND_SOURCE_DIR)
+  FetchContent_Declare(quant-backend
+      SOURCE_DIR "${QUANT_BACKEND_SOURCE_DIR}")
+else()
+  FetchContent_Declare(quant-backend
+      GIT_REPOSITORY "${QUANT_BACKEND_GIT_REPOSITORY}"
+      GIT_TAG        "${QUANT_BACKEND_GIT_TAG}"
+      GIT_SHALLOW    TRUE)
+endif()
+FetchContent_MakeAvailable(quant-backend)
+
+# Linux targets are the ones that get a stdlib archive built below.
 set(QUANT_LINUX_TARGETS "")
 
 foreach(_backend IN LISTS QUANT_BACKENDS)
-  if(_backend MATCHES "^x86_64")
-    set(QUANT_HAS_X86_64 ON)
-  elseif(_backend MATCHES "^aarch64")
-    set(QUANT_HAS_AARCH64 ON)
-  endif()
-
-  if(_backend MATCHES "-windows$")
-    set(QUANT_HAS_PE ON)
-  else()
-    set(QUANT_HAS_ELF ON)
-  endif()
-
   if(_backend MATCHES "-linux$")
     list(APPEND QUANT_LINUX_TARGETS ${_backend})
   endif()
@@ -201,31 +178,6 @@ add_custom_target(quant_std_embed DEPENDS "${QUANT_STD_EMBED_HEADER}")
 # libquant: the compiler itself (C++)
 # ---------------------------------------------------------------------------
 
-set(QUANT_BACKEND_SOURCES
-    src/backend/native_backend.cpp
-    src/backend/registry.cpp
-    src/backend/symbol_table.cpp
-    src/backend/code_emitter.cpp
-)
-
-foreach(_backend IN LISTS QUANT_BACKENDS)
-  string(REPLACE "-" "_" _target_source "${_backend}")
-  list(APPEND QUANT_BACKEND_SOURCES "src/backend/targets/${_target_source}.cpp")
-endforeach()
-
-if(QUANT_HAS_X86_64)
-  list(APPEND QUANT_BACKEND_SOURCES src/backend/isel.cpp src/backend/x86_64.cpp)
-endif()
-if(QUANT_HAS_AARCH64)
-  list(APPEND QUANT_BACKEND_SOURCES src/backend/aarch64_isel.cpp src/backend/aarch_64.cpp)
-endif()
-if(QUANT_HAS_ELF)
-  list(APPEND QUANT_BACKEND_SOURCES src/backend/elf_writer.cpp)
-endif()
-if(QUANT_HAS_PE)
-  list(APPEND QUANT_BACKEND_SOURCES src/backend/pe_writer.cpp)
-endif()
-
 add_library(libquant
     src/frontend/ast.cpp
     src/frontend/lexer.cpp
@@ -234,10 +186,8 @@ add_library(libquant
     src/semantic/symbol_table.cpp
     src/utils/logger.cpp
     src/ir/ir_gen.cpp
-    src/ir/ir_dump.cpp
     src/ir/opt.cpp
     src/modules/modules.cpp
-    ${QUANT_BACKEND_SOURCES}
     src/utils/file_manager.cpp
     src/utils/options.cpp
     src/utils/errors.cpp
@@ -276,23 +226,7 @@ target_compile_definitions(libquant PUBLIC
     QUANT_ROOT="${PROJECT_SOURCE_DIR}"
 )
 
-foreach(_backend IN LISTS QUANT_BACKENDS)
-  string(REPLACE "-" "_" _macro "${_backend}")
-  list(APPEND QUANT_BACKEND_DEFINES "QUANT_TARGET_${_macro}=1")
-endforeach()
-
-foreach(_flag QUANT_HAS_X86_64 QUANT_HAS_AARCH64 QUANT_HAS_ELF QUANT_HAS_PE)
-  if(${_flag})
-    list(APPEND QUANT_BACKEND_DEFINES ${_flag})
-  endif()
-endforeach()
-
-if(QUANT_DEFAULT_TARGET)
-  list(APPEND QUANT_BACKEND_DEFINES "QUANT_DEFAULT_TARGET=\"${QUANT_DEFAULT_TARGET}\"")
-endif()
-
-target_compile_definitions(libquant PUBLIC ${QUANT_BACKEND_DEFINES})
-target_link_libraries(libquant PUBLIC quant-alloc)
+target_link_libraries(libquant PUBLIC quant-alloc quant-backend)
 
 # ---------------------------------------------------------------------------
 # Executables

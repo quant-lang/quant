@@ -11,7 +11,7 @@
 #include "quant/support/alloc.h"
 #include "quant/semantic/symbol_table.h"
 #include "quant/modules/module.h"
-#include "quant/backend/targets.h"
+#include "backend/targets.h"
 #include "utils/errors.h"
 
 namespace quant {

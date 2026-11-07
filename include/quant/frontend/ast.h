@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "utils/logger.h"
+#include "qu-ir/types.h"
 
 namespace quant
 {
@@ -23,36 +24,10 @@ namespace quant::ast {
     struct ElseIfStmt;
 
     // Types
-
-    enum class TypeKind {
-        Void,
-        Bool,
-
-        I8,
-        I16,
-        I32,
-        I64,
-
-        U8,
-        U16,
-        U32,
-        U64,
-
-        F32,
-        F64,
-
-        Struct,
-        Pointer,
-        Reference,
-
-        NullPtr,
-
-        Generic,
-
-        Enum,
-
-        Count
-    };
+    //
+    // The canonical scalar kinds live in QUIR so the AST and the backend share
+    // one representation. See qu-ir/types.h.
+    using TypeKind = quir::TypeKind;
 
     struct Type {
         TypeKind kind;
@@ -156,11 +131,7 @@ namespace quant::ast {
         Expr* left;
         Expr* right;
     };
-    enum class CastKind {
-        ValueCast,   // as
-        Bitcast,     // as!
-        Format       // numeric as str: lowers to a qk_format_* call
-    };
+    using CastKind = quir::CastKind;
     struct CastExpr {
         Expr* value;
         const Type* target;
