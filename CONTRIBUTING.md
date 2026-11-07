@@ -47,7 +47,7 @@ Use `AI_CONTEXT.md` as the main context for AI tools working with Quant.
 
 ## Adding an OS ABI
 
-Each `quant::codegen::Target` represents one architecture/OS combination. Target-specific code lives in the separate `qu-backend` (repository)["https://github.com/quant-lang/qu-backend"], under `src/backend/targets/`.
+Each `quant::codegen::Target` represents one architecture/OS combination. Target-specific code lives in the separate `qu-backend` [repository](https://github.com/quant-lang/qu-backend) , under `src/backend/targets/`.
 
 To add a new OS ABI:
 
