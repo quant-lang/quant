@@ -4,7 +4,7 @@ load "std::vector";
 using std::vector;
 
 void main() {
-    @init mut Vec<i32> v;
+    @init mut vec<i32> v;
 
     v.push(10);
     v.push(20);

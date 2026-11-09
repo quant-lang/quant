@@ -501,10 +501,9 @@ All stdlib is written in pure Quant. Key modules:
 | `std::format` | String formatting                              |
 | `std::string` | String operations                              |
 | `std::math`   | Math functions                                 |
-| `std::cmp`    | Ordering, comparison                           |
 | `std::heap`   | `heap_malloc`, `heap_realloc`, `heap_free`     |
 | `std::arena`  | Bump allocator backed by mmap                  |
-| `std::vector` | Generic `Vec<T>` backed by heap                |
+| `std::vector` | Generic `vec<T>` backed by heap                |
 | `std::types`  | `option<T>`, `either<L,R>`, `pair<A,B>`, `slice<T>`, `result<T,E>` |
 
 On Linux, I/O uses `@syscall`. On Windows, `@import` for WinAPI. On ZeroPoint (`std/zp/io/io.qu`), single-buffer syscalls: `print(str)`, `read(str)`, `open(str)` — the OS computes everything except the buffer.

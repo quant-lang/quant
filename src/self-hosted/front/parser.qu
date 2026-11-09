@@ -51,7 +51,7 @@ struct Parser {
     mut Lexer lexer;
     mut Token current;
     mut Token previous;
-    mut Vec<Token> buffer;
+    mut vec<Token> buffer;
     mut u64 buffer_head;
     mut Region arena;
     mut *StrNode current_type_params;

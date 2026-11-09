@@ -971,7 +971,7 @@ const ast::Type* SemanticAnalyzer::canonicalize_struct_type(const ast::Type* typ
 
     // Canonicalize nested type arguments first so they are qualified
     // consistently even when the outer struct name cannot be resolved
-    // (e.g. Vec<Vec<Token>> keeps a qualified inner arg).
+    // (e.g. vec<vec<Token>> keeps a qualified inner arg).
     std::vector<const ast::Type*> new_args;
     bool args_changed = false;
     for (const auto* arg : type->type_args) {
@@ -2795,7 +2795,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call,
         // Build substitution map: param name -> concrete type.
         // Canonicalize each explicit type argument so struct types are
         // qualified the same way declaration types are (e.g. Token becomes
-        // <module>::Token, Vec<Token> keeps a canonicalized inner arg).
+        // <module>::Token, vec<Token> keeps a canonicalized inner arg).
         std::unordered_map<std::string, const Type*> subst;
         if (resolved_type_args.size() != generic_def->params.size()) {
             ctx.errors.add(loc, "Type argument count mismatch for generic function '" +
@@ -3262,7 +3262,7 @@ const ast::Type* SemanticAnalyzer::analyze_cast(const ast::CastExpr& n,
 }
 
 // TypeContext::type_size() is const and cannot instantiate anything, so a
-// struct field whose type is an uninstantiated generic (slice<u8>, Vec<Token>)
+// struct field whose type is an uninstantiated generic (slice<u8>, vec<Token>)
 // counts as zero bytes and silently yields a too-small sizeof. Materialize every
 // generic reachable from `t` first, so field sizes resolve consistently no
 // matter which module happens to be compiled first. Pointer targets are not
@@ -3302,7 +3302,7 @@ const ast::Type* SemanticAnalyzer::analyze_sizeof(const ast::SizeofExpr& n,
         type = ctx.types.substitute_type(type, *current_type_subst);
     }
     // Materialize generic struct instantiations reachable from this type so
-    // their sizes can be computed (e.g. sizeof(Vec<Token>) inside a generic
+    // their sizes can be computed (e.g. sizeof(vec<Token>) inside a generic
     // function body, or a struct whose field is slice<u8>).
     materialize_generics(type, ctx.types);
     int sz = ctx.types.type_size(type);

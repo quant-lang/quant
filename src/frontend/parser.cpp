@@ -328,7 +328,7 @@ Token Parser::peek(int n) {
 bool Parser::looks_like_generic_args() {
     // `current` is '<'. Scan forward to decide whether the tokens inside the
     // angle brackets form a comma-separated type argument list (which may
-    // contain nested generics, e.g. Vec<Token>) closed by a matching '>' that
+    // contain nested generics, e.g. vec<Token>) closed by a matching '>' that
     // is immediately followed by '(' or '{'.
     // Depth starts at 1 because the opening '<' is `current`.
     int depth = 1;

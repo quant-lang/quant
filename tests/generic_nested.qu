@@ -7,7 +7,7 @@ struct Token {
 };
 
 void main() {
-    @init mut Vec<Vec<Token>> tokens;
+    @init mut vec<vec<Token>> tokens;
 
     tokens.free();
     std::io::print("ok\n");

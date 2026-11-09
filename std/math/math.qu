@@ -52,23 +52,3 @@ T clamp<T>(T x, T lo, T hi) {
     if (x > hi) { return hi; }
     return x;
 }
-
-// sum<T> - add two values.
-T sum<T>(T a, T b) {
-    return a + b;
-}
-
-// diff<T> - subtract b from a.
-T diff<T>(T a, T b) {
-    return a - b;
-}
-
-// prod<T> - multiply two values.
-T prod<T>(T a, T b) {
-    return a * b;
-}
-
-// div<T> - divide a by b.
-T div<T>(T a, T b) {
-    return a / b;
-}

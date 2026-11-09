@@ -1,7 +1,7 @@
 // std::string
 //
 // String helpers and the owning `string` type.
-// `str` is an alias for `*char`, so aи `str` parameter is a bare pointer to
+// `str` is an alias for `*char`, so a `str` parameter is a bare pointer to
 // NUL-terminated bytes and a string literal can be passed directly, without
 // a cast.
 //

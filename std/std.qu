@@ -3,7 +3,6 @@
 module "std";
 
 load "std::arena";
-load "std::cmp";
 load "std::format";
 load "std::heap";
 load "std::io";

@@ -186,8 +186,8 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 ### P2 - Backends, standard library, docs and quality of life
 
 * [ ] Fix ZeroPoint exit. `Arm64ZeroPointTarget::emit_exit` uses Linux syscall 93, but the ZeroPoint ABI reserves syscall 20 for exit and documents it as not implemented. Decide between trapping and waiting for kernel support; do not call the Linux number.
-* [ ] Add explicit checked accessors for `string` and `Vec` (`try_get` returning `option<T>`). Keep `get` unchecked. This matches the "no hidden behavior" rule.
-* [ ] Unify std type names. Today `string`, `option`, and `slice` use snake_case, while `Vec` uses PascalCase. Pick one rule and update the std, tests and docs.
+* [ ] Add explicit checked accessors for `string` and `vec` (`try_get` returning `option<T>`). Keep `get` unchecked. This matches the "no hidden behavior" rule.
+* [x] Unify std type names. Today `string`, `option`, and `slice` use snake_case, while `Vec` uses PascalCase. Pick one rule and update the std, tests and docs.
 * [ ] Add a high-level `read_line` that stores the result in an owning `string` and removes the trailing `\n`. Allocation and freeing must stay explicit.
 * [ ] Improve struct literal inference from context, for example in call arguments and return values. Do not add general type inference.
 * [ ] Add a way to initialize an empty struct, for example `A a = A{};`.

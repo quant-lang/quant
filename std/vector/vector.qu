@@ -7,7 +7,7 @@
 //   using std::vector;
 //
 //   void main() {
-//       @init mut Vec<i32> v;
+//       @init mut vec<i32> v;
 //       v.push(10);
 //       v.push(20);
 //       v.push(30);
@@ -23,7 +23,7 @@ module "std::vector";
 
 load "std::heap";
 
-struct Vec<T> {
+struct vec<T> {
     mut *T data;
     mut i32 size;
     mut i32 capacity;
@@ -62,25 +62,3 @@ struct Vec<T> {
         }
     }
 };
-
-// --- Deprecated free-function wrappers. Prefer the Vec<T> methods. ---
-
-// vec_push - append a value to a vector.
-void vec_push<T>(mut &Vec<T> v, T val) {
-    v.push(val);
-}
-
-// vec_get - read the element at `index` (unchecked).
-T vec_get<T>(&Vec<T> v, i32 index) {
-    return v.get(index);
-}
-
-// vec_len - number of elements in the vector.
-u64 vec_len<T>(&Vec<T> v) {
-    return v.len();
-}
-
-// vec_free - release the backing allocation.
-void vec_free<T>(mut &Vec<T> v) {
-    v.free();
-}

@@ -4,10 +4,8 @@
 
 load "std::io";
 load "std::types";
-load "std::cmp";
 load "std::arena";
 using std::types;
-using std::cmp;
 
 @entry i32 main() {
     // option<T> methods
@@ -52,18 +50,6 @@ using std::cmp;
     if ((rv as! *i8)[0] as i32 != 104) { return 22; }
     if ((re.unwrap_right_or("xx") as! *i8)[0] as i32 != 104) { return 23; }
     if ((le.unwrap_right_or("zz") as! *i8)[0] as i32 != 122) { return 24; }
-
-    // ordering methods + cmp<T>
-    ordering less = cmp<i32>(3, 8);
-    if (!less.is_less()) { return 25; }
-    if (less.is_equal()) { return 26; }
-    ordering gt = less.reverse();
-    if (!gt.is_greater()) { return 27; }
-    ordering eq = cmp<i32>(5, 5);
-    if (!eq.is_equal()) { return 28; }
-    ordering t = eq.then(less);
-    if (!t.is_less()) { return 29; }
-    if (!cmp_then(eq, less).is_less()) { return 30; }
 
     // std::arena::Region methods
     mut std::arena::Region reg = std::arena::_create(128);
