@@ -629,7 +629,7 @@ ast::StructDecl Parser::parse_struct_decl() {
     }
 
     expect(TOKEN_RBRACE, "Expected '}' after struct body");
-    expect(TOKEN_SEMICOLON, "Expected ';' after struct body");
+    match(TOKEN_SEMICOLON);
 
     return ret;
 }
@@ -943,7 +943,7 @@ ast::EnumDecl Parser::parse_enum_decl() {
     }
 
     expect(TOKEN_RBRACE, "Expected '}' after enum body");
-    expect(TOKEN_SEMICOLON, "Expected ';' after enum body");
+    match(TOKEN_SEMICOLON);
 
     return ret;
 }
