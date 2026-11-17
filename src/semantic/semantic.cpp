@@ -1616,8 +1616,8 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func, const SourceLocat
                 ctx.errors.add(loc, "@syscall number must be non-negative: " + func.name);
                 return;
             }
-            // The ZeroPoint ABI surface is intentionally tiny; reject anything
-            // outside it so undefined syscalls never reach the kernel.
+            // Targets with a restricted ABI surface (e.g. ZeroPoint and SUPER OS)
+            // reject anything outside it so undefined syscalls never reach the kernel.
             if (!ctx.target->validate_syscall(static_cast<uint64_t>(num->value))) {
                 ctx.errors.add(loc, "@syscall(" + std::to_string(num->value) +
                                ") is not part of the " + ctx.target->syscall_abi_name() + " ABI " +

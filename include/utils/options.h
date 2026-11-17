@@ -35,7 +35,7 @@ namespace utils::options {
 
         // Resolved compilation target. Defaults to the host's native backend
         // if it is enabled in this build; otherwise --target is mandatory.
-        std::string target_name;   // canonical, e.g. "aarch64-zeropoint"
+        std::string target_name;   // canonical, e.g. "aarch64-zeropoint" or "x86_64-superos"
         TargetArch target_arch = TargetArch::X86_64;
         TargetOS target_os = TargetOS::Linux;
         const quant::codegen::Target* target = nullptr;

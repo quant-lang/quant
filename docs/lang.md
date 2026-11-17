@@ -597,13 +597,13 @@ std::io::exit(0);
 extern void print(str text);
 ```
 
-Functions marked with `@syscall(N)` are lowered to a raw syscall with number N (remapped per target; on ZeroPoint the number is the ABI number):
+Functions marked with `@syscall(N)` are lowered to a raw syscall with number N (remapped per target; on ZeroPoint and SUPER OS the number is used as the target's ABI number):
 
 ```
 @syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
 ```
 
-The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quant: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI), on ZeroPoint (`--target aarch64-zeropoint`) on top of single-buffer syscalls (`std/zp/io/io.qu`).
+The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quant: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI), on ZeroPoint (`--target aarch64-zeropoint`) on top of single-buffer syscalls (`std/zp/io/io.qu`), and on SUPER OS (`--target x86_64-superos`) on top of `int 0x80` syscalls (`std/superos/io/io.qu`).
 
 ### `using`
 
@@ -784,6 +784,17 @@ everything else (length, descriptor, mode) is computed by the OS.
 @syscall(0)  extern void sys_print(str buffer);
 @syscall(1)  extern void sys_read(str buffer);
 @syscall(10) extern void sys_open(str buffer);   // read-only
+```
+
+SUPER OS (`--target x86_64-superos`) uses legacy `int 0x80` syscalls: the number
+goes in `rax` and the six arguments in `rdi, rsi, rdx, r10, r8, r9`; the result
+comes back in `rax`. Numbers are used as-is: read=0, write=1, mmap=9, munmap=11,
+sbrk=12, yield=24, getpid=39, exit=60. Anything else is rejected at compile time.
+
+```
+// SUPER OS ABI (std/superos/io/io.qu)
+@syscall(1)  extern i64 sys_write(i64 fd, str buf, i64 len);
+@syscall(60) extern void sys_exit(i64 code);
 ```
 
 ```
@@ -1040,6 +1051,7 @@ The result is computed during compilation. String conversion is currently not su
 qu file.qu -o output          # compile to native binary (ELF/PE32+)
 qu file.qu --target aarch64   # cross-compile for AArch64 (ELF)
 qu file.qu --target aarch64-zeropoint   # ZeroPoint OS (AArch64, static-PIE ELF)
+qu file.qu --target x86_64-superos      # SUPER OS (x86-64, ELF64 ET_EXEC)
 qu file.qu --emit-ir          # print intermediate representation
 qu file.qu --emit-asm         # print generated assembly
 qu file.qu --time             # print compilation time
@@ -1063,7 +1075,7 @@ qu src/self-hosted/main.qu -o out -O3
 
 ### Optimization levels
 
-Quant performs optimization directly on its own IR, between IR generation and the native backend. This means the same optimizer is shared by every supported target: x86-64, AArch64, Windows and ZeroPoint.
+Quant performs optimization directly on its own IR, between IR generation and the native backend. This means the same optimizer is shared by every supported target: x86-64, AArch64, Windows, ZeroPoint and SUPER OS.
 
 The goal is simple: **make the generated program smaller and faster without changing what it does.**
 
@@ -1170,16 +1182,27 @@ The set of backends compiled into the compiler binary is fixed at CMake configur
 with `QUANT_BACKENDS`; `--target` then selects one of the enabled targets per compilation:
 
 ```
-cmake -B build -DQUANT_BACKENDS="x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint"
+cmake -B build -DQUANT_BACKENDS="x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint;x86_64-superos"
 ```
 
-- Defaults: `x86_64-windows` when building on Windows, otherwise `x86_64-linux;aarch64-linux;aarch64-zeropoint`.
+- Defaults: `x86_64-windows` when building on Windows, otherwise `x86_64-linux;aarch64-linux;aarch64-zeropoint;x86_64-superos`.
 - Only the enabled backends are compiled into the binary: an x86_64-only build contains no AArch64 code generator and no PE writer, a Windows-only build contains no ELF writer, and so on.
-- Canonical target names: `x86_64-linux`, `aarch64-linux`, `x86_64-windows`, `aarch64-zeropoint`. Short aliases (`x86_64`, `arm64`, ...) are still accepted.
+- Canonical target names: `x86_64-linux`, `aarch64-linux`, `x86_64-windows`, `aarch64-zeropoint`, `x86_64-superos`. Short aliases (`x86_64`, `arm64`, ...) are still accepted.
 - An unknown target name fails with the list of known names; a known name that was not enabled in this build fails with the list of enabled backends and a reconfigure hint. There is no fallback to another backend.
-- Without `--target`, the compiler uses its host's native backend (if enabled). For cross-compilation-oriented builds the default can be changed at CMake time: `-DQUANT_DEFAULT_TARGET=aarch64-zeropoint` (must be one of `QUANT_BACKENDS`; validated at configure time).
+- Without `--target`, the compiler uses its host's native backend (if enabled). For cross-compilation-oriented builds the default can be changed at CMake time: `-DQUANT_DEFAULT_TARGET=aarch64-zeropoint` or `-DQUANT_DEFAULT_TARGET=x86_64-superos` (must be one of `QUANT_BACKENDS`; validated at configure time).
 
 ZeroPoint (`--target aarch64-zeropoint`) produces a position-independent static-PIE executable (`ld.lld -pie --image-base=0x40000000`): ET_DYN, no interpreter, stock load address 0x40000000. Syscalls follow the ZeroPoint ABI — a single `str buffer` in X0, number in X8, `SVC #0`; the OS computes everything else. After `main` returns the program parks on `WFE` (exit is not implemented in the kernel yet). The kernel has no malloc yet (MMU only), so `region`/`alloc`, `std::heap`, `std::arena` and the format runtime (`as str`) are unavailable; syscalls outside the ABI set are rejected at compile time.
+
+SUPER OS (`--target x86_64-superos`) produces a non-PIE ELF64 `ET_EXEC` executable
+loaded at `0x400000` (SysV AMD64 ABI, user stack top at `0x600000`). Syscalls go
+through `int 0x80`: number in `rax`, arguments in `rdi, rsi, rdx, r10, r8, r9`,
+result in `rax`, negative values are errno errors. The supported set is
+read=0, write=1, mmap=9, munmap=11, sbrk=12, yield=24, getpid=39, exit=60; any
+other `@syscall(N)` is a compile-time error. `load "std::io"` resolves to
+`std/superos/io/io.qu`, which wraps those calls (`print`, `println`, `print_char`,
+`read`, `write`, `mmap`, `munmap`, `sbrk`, `yield`, `getpid`, `exit`). Since the OS
+provides allocation, `std::heap`, `std::arena` and the format runtime work here.
+See [SUPER OS](https://github.com/grafmorkov/super-os) for the OS itself.
 
 Requires: CMake 3.20+, C++20 compiler.
 
@@ -1189,7 +1212,8 @@ Per-platform builds live in dedicated toolchain files under `toolchains/`
 (Ninja, Release, `-j$(nproc)`) into `build-<name>/bin/qu`; cross toolchains that
 are not installed are skipped with a notice. The ZeroPoint compiler build uses
 the same AArch64 Linux toolchain as the `aarch64` build (per the ZeroPoint
-author's request).
+author's request); the `superos` build uses the Windows/MinGW-w64 toolchain and
+enables `x86_64-superos` only.
 
 ---
 

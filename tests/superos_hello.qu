@@ -1,0 +1,7 @@
+// SUPER OS smoke test: int 0x80 syscalls.
+load "std::io";
+
+@entry i32 main() {
+    std::io::println("hello super-os");
+    return 0;
+}

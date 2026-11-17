@@ -22,7 +22,7 @@ import sys
 import tempfile
 
 # Tests that cannot be driven non-interactively or are not for the host target.
-SKIP = {"stdin_read", "zp_hello"}
+SKIP = {"stdin_read", "zp_hello", "superos_hello"}
 # Tests whose stdout is nondeterministic (prints OS handles): compare exit codes only.
 EXIT_CODE_ONLY = {"file_write"}
 

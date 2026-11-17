@@ -122,15 +122,15 @@ Other options: `--emit-ir`, `--emit-asm`, `--no-compile`, `--time`.
 
 Quant is not tied to a specific operating system. The `@syscall(N)` attribute lowers
 to the raw syscall interface of the selected target, while the standard library
-automatically selects the appropriate OS implementation (`std/win/`, `std/zp/`, ...).
+automatically selects the appropriate OS implementation (`std/win/`, `std/zp/`, `std/superos/`, ...).
 
 Backends are chosen at CMake configure time; `--target` then picks one of the enabled
 ones at compile time (a known-but-disabled target fails with a clear error, no silent fallback):
 
 ```bash
-cmake -B build -DQUANT_BACKENDS="x86_64-linux;aarch64-linux;aarch64-zeropoint"
+cmake -B build -DQUANT_BACKENDS="x86_64-linux;aarch64-linux;aarch64-zeropoint;x86_64-superos"
 # optional: pick a different default target for builds without the host backend
-cmake -B build -DQUANT_BACKENDS="aarch64-zeropoint" -DQUANT_DEFAULT_TARGET="aarch64-zeropoint"
+cmake -B build -DQUANT_BACKENDS="x86_64-superos" -DQUANT_DEFAULT_TARGET="x86_64-superos"
 ```
 
 | Target | Flag | Output | Status | Notes |
@@ -139,6 +139,7 @@ cmake -B build -DQUANT_BACKENDS="aarch64-zeropoint" -DQUANT_DEFAULT_TARGET="aarc
 | Linux AArch64 | `--target aarch64` | ELF | supported | Syscall numbers are mapped automatically |
 | Windows x86-64 | *(native on Windows)* | PE32+ | supported | WinAPI via `@import`, no direct syscalls |
 | [ZeroPoint](https://github.com/Operator-about/ZeroPoint) | `--target aarch64-zeropoint` | static-PIE ELF | experimental | Custom ABI with single-buffer syscalls, base `0x40000000` |
+| [SUPER OS](https://github.com/grafmorkov/super-os) | `--target x86_64-superos` | ELF64 `ET_EXEC` | experimental | x86-64 ring-3 userland, `int 0x80` syscalls, base `0x400000` |
 
 Quant can target custom operating systems and architectures as well. Adding a new
 OS ABI is a small, self-contained change. See

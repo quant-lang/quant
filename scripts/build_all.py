@@ -8,6 +8,7 @@
 #   windows   -> qu.exe built via MinGW-w64, targets x86_64-windows
 #   zeropoint -> same x86_64 windows toolchain (per ZeroPoint author's request),
 #                targets aarch64-zeropoint only
+#   superos   -> same x86_64 windows toolchain, targets x86_64-superos only
 #
 # All builds: Ninja, Release, -j$(nproc). Missing cross toolchains are skipped.
 
@@ -75,6 +76,8 @@ def main():
          "x86_64-windows", "x86_64-windows"),
         ("zeropoint", "toolchains/windows-x86_64.cmake", "x86_64-w64-mingw32-g++",
          "aarch64-zeropoint", "aarch64-zeropoint"),
+        ("superos", "toolchains/windows-x86_64.cmake", "x86_64-w64-mingw32-g++",
+         "x86_64-superos", "x86_64-superos"),
     ]
 
     for name, toolchain, needs, backends, default in builds:

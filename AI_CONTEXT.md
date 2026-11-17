@@ -506,7 +506,7 @@ All stdlib is written in pure Quant. Key modules:
 | `std::vector` | Generic `vec<T>` backed by heap                |
 | `std::types`  | `option<T>`, `either<L,R>`, `pair<A,B>`, `slice<T>`, `result<T,E>` |
 
-On Linux, I/O uses `@syscall`. On Windows, `@import` for WinAPI. On ZeroPoint (`std/zp/io/io.qu`), single-buffer syscalls: `print(str)`, `read(str)`, `open(str)` — the OS computes everything except the buffer.
+On Linux, I/O uses `@syscall`. On Windows, `@import` for WinAPI. On ZeroPoint (`std/zp/io/io.qu`), single-buffer syscalls: `print(str)`, `read(str)`, `open(str)` — the OS computes everything except the buffer. On SUPER OS (`std/superos/io/io.qu`), `int 0x80` syscalls: `print`, `println`, `print_char`, `read`, `write`, `mmap`, `munmap`, `sbrk`, `yield`, `getpid`, `exit`.
 
 `option<T>` uses `@guard(has_value)` on the value field. `either<L,R>` uses guards on both variants.
 
@@ -594,6 +594,7 @@ Currently supported targets:
 * `aarch64-linux`
 * `x86_64-windows`
 * `aarch64-zeropoint`
+* `x86_64-superos`
 
 `qu-backend`'s CMake builds only the targets selected by `QUANT_BACKENDS`. Unknown targets fail configuration, and the default host target must be enabled.
 
@@ -625,6 +626,19 @@ ZeroPoint is an AArch64 ELF OS with its own minimal ABI ("Linux-like, different 
 - **Heap**: the kernel has no malloc yet (MMU exists, allocation syscalls are TODO). Any `@syscall(N)` outside the ABI set is a compile-time error, so loading `std::heap`/`std::arena` fails cleanly instead of emitting undefined syscalls.
 - **Format runtime**: `std::format` is not loaded on this target (`as str` casts fail at link time with undefined `qk_format_*`) until the kernel provides allocation.
 - **Stdlib override**: `load "std::io"` resolves to `std/zp/io/io.qu` when the target is ZeroPoint (same pattern as the Windows `std/win/` override).
+
+### SUPER OS target
+
+[SUPER OS](https://github.com/grafmorkov/super-os) is an experimental x86-64 OS
+with a ring-3 userland, written mostly in Quant. The `x86_64-superos` target emits
+a non-PIE ELF64 `ET_EXEC` executable at base `0x400000` with the SysV AMD64 ABI;
+user stack top is `0x600000`.
+
+- **Syscalls**: `int 0x80`, number in RAX, six arguments in RDI/RSI/RDX/R10/R8/R9, result in RAX; negative results are errno values. Numbers are used as-is: read=0, write=1, mmap=9, munmap=11, sbrk=12, yield=24, getpid=39, exit=60. Other numbers fail semantic analysis via `validate_syscall()`.
+- **Entry/exit**: `_start` calls `main`, then exits with syscall 60; `region`/`alloc` use `mmap`/`munmap`.
+- **Stdlib override**: `load "std::io"` resolves to `std/superos/io/io.qu` (same `stdlib_root()` pattern as Windows and ZeroPoint). It provides `print`, `println`, `print_char`, `read`, `write`, `mmap`, `munmap`, `sbrk`, `yield`, `getpid` and `exit`.
+- **Format runtime**: loaded — the OS has allocation, so `std::heap`, `std::arena` and `as str` work.
+- **Smoke test**: `tests/superos_hello.qu`.
 
 ---
 

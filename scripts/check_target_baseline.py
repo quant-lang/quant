@@ -8,7 +8,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGETS = ("x86_64-linux", "aarch64-linux", "x86_64-windows", "aarch64-zeropoint")
+TARGETS = ("x86_64-linux", "aarch64-linux", "x86_64-windows", "aarch64-zeropoint",
+           "x86_64-superos")
 LEVELS = (0, 2)
 
 

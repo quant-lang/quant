@@ -35,7 +35,8 @@ module "std::io";
 
 // strlen - number of bytes in a NUL-terminated string, without the \0.
 i64 strlen(str s) {
-    for (mut i64 i = 0; s[i] != 0) {
+    mut i64 i = 0;
+    while (s[i] != 0) {
         i++;
     }
     return i;
