@@ -338,11 +338,15 @@ struct Lexer {
             case '<':
                 if (match('='))
                     return make_token(TOKEN_LTE);
+                else if (match('<'))
+                    return make_token(TOKEN_SHL);
                 else
                     return make_token(TOKEN_LT);
             case '>':
                 if (match('='))
                     return make_token(TOKEN_GTE);
+                else if (match('>'))
+                    return make_token(TOKEN_SHR);
                 else
                     return make_token(TOKEN_GT);
             case '+':

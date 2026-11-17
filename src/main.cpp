@@ -309,9 +309,10 @@ int main(int argc, char **argv)
                 } else {
                     ld_name = link_spec.default_linker;
                 }
-                std::string link_cmd = ld_name + " --gc-sections -o " + exe_path.string() + " " + obj_path.string();
+                std::string link_cmd = ld_name + " --gc-sections -o \"" + exe_path.string()
+                    + "\" \"" + obj_path.string() + "\"";
                 if (ctx.use_static_std) {
-                    link_cmd += " " + ctx.static_std_path.string();
+                    link_cmd += " \"" + ctx.static_std_path.string() + "\"";
                 }
                 if (!link_spec.extra_flags.empty()) {
                     link_cmd += " " + link_spec.extra_flags;

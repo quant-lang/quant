@@ -1,0 +1,136 @@
+// std::io - SUPER OS implementation.
+//
+// SUPER OS ABI (x86-64):
+//   int 0x80, number in RAX, args in RDI, RSI, RDX, R10, R8, R9,
+//   result in RAX.
+//
+//   0  read(fd, buf, len)
+//   1  write(fd, buf, len)
+//   9  mmap(addr, len, prot, flags, fd, offset)
+//   11 munmap(addr, len)
+//   12 sbrk(increment)
+//   24 yield()
+//   39 getpid()
+//   60 exit(code)
+//
+// Usage:
+//   load "std::io";
+//   using std::io;
+//
+//   @entry i32 main() {
+//       println("hello from SUPER OS");
+//       return 0;
+//   }
+
+module "std::io";
+
+@syscall(0) extern i64 sys_read(i64 fd, str buf, i64 len);
+@syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
+@syscall(9) extern i64 sys_mmap(i64 addr, i64 len, i64 prot, i64 flags, i64 fd, i64 offset);
+@syscall(11) extern i64 sys_munmap(i64 addr, i64 len);
+@syscall(12) extern i64 sys_sbrk(i64 increment);
+@syscall(24) extern void sys_yield();
+@syscall(39) extern i64 sys_getpid();
+@syscall(60) extern void sys_exit(i64 code);
+
+// strlen - number of bytes in a NUL-terminated string, without the \0.
+i64 strlen(str s) {
+    for (mut i64 i = 0; s[i] != 0) {
+        i++;
+    }
+    return i;
+}
+
+// print - print a string to stdout.
+void print(str text) {
+    sys_write(1, text, strlen(text));
+}
+
+// println - print a string followed by a newline to stdout.
+void println(str text) {
+    print(text);
+    print_char('\n');
+}
+
+// eprint - print a string to stderr.
+void eprint(str text) {
+    sys_write(2, text, strlen(text));
+}
+
+// ByteBuf - single-byte buffer for the read/write syscalls.
+struct ByteBuf { 
+    char c; 
+};
+@init mut ByteBuf g_byte_buf;
+
+// print_char - print a single byte to stdout.
+void print_char(char c) {
+    g_byte_buf.c = c;
+    sys_write(1, (&g_byte_buf) as! str, 1);
+}
+
+// exit - terminate the current process with the given exit code.
+void exit(i32 code) {
+    sys_exit(code as i64);
+}
+
+// yield - give the CPU to another runnable process.
+void yield() {
+    sys_yield();
+}
+
+// getpid - identifier of the current process.
+i64 getpid() {
+    return sys_getpid();
+}
+
+// sbrk - grow the process heap by `increment` bytes.
+// Returns the previous break, or a negative error code.
+i64 sbrk(i64 increment) {
+    return sys_sbrk(increment);
+}
+
+// mmap - allocate `len` bytes of zero-filled anonymous memory.
+// Returns the address of the new mapping, or a negative error code.
+i64 mmap(i64 len) {
+    return sys_mmap(0, len, 3, 0x22, -1, 0);
+}
+
+// munmap - release a mapping created by mmap. Currently advisory on SUPER OS.
+i64 munmap(i64 addr, i64 len) {
+    return sys_munmap(addr, len);
+}
+
+// write - write `len` bytes to a descriptor. Returns bytes written.
+i64 write(i64 fd, str buf, i64 len) {
+    i64 r = sys_write(fd, buf, len);
+
+    if (r < 0)
+        return -r; 
+    return r;
+}
+
+// read_fd - read up to `len` bytes from a descriptor.
+i64 read_fd(i64 fd, str buf, i64 len) {
+    i64 r = sys_read(fd, buf, len);
+    if (r < 0) 
+        return -r;
+    return r;
+}
+
+// read - read up to `len` bytes from stdin.
+i64 read(str buf, i64 len) {
+    i64 r = sys_read(0, buf, len);
+    if (r < 0) 
+        return -r; 
+    return r;
+}
+
+// read_char - read a single byte from stdin, or -1 at end of input.
+i64 read_char() {
+    i64 n = sys_read(0, (&g_byte_buf) as! str, 1);
+    if (n <= 0) 
+        return -1;
+
+    return g_byte_buf.c as i64;
+}

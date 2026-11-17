@@ -97,6 +97,7 @@ enum ExprKind {
     EXPR_TYPE,
     EXPR_INDEX,
     EXPR_STRUCT_INIT,
+    EXPR_SHIFT,
     EXPR_SIZEOF
 };
 
@@ -128,6 +129,7 @@ struct ExprNode {
 
     mut BinaryOp bin_op;
     mut UnaryOp un_op;
+    mut bool is_left;
 
     mut *ExprNode arg_head;
     mut *ExprNode arg_tail;

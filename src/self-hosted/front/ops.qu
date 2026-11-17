@@ -81,12 +81,15 @@ i32 get_precedence(TokenType t) {
         case TOKEN_GT:
         case TOKEN_GTE:
             return 7;
+        case TOKEN_SHL:
+        case TOKEN_SHR:
+            return 8;
         case TOKEN_PLUS:
         case TOKEN_MINUS:
-            return 8;
+            return 9;
         case TOKEN_STAR:
         case TOKEN_SLASH:
-            return 9;
+            return 10;
         default:
             return -1;
     }

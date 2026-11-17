@@ -94,6 +94,9 @@ enum TokenType {
     TOKEN_GTE,
     TOKEN_COLON_COLON,
 
+    TOKEN_SHL,
+    TOKEN_SHR,
+
     TOKEN_LPAREN,
     TOKEN_RPAREN,
     TOKEN_LBRACE,
