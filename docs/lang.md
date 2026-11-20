@@ -1205,7 +1205,7 @@ with `QUANT_BACKENDS`; `--target` then selects one of the enabled targets per co
 cmake -B build -DQUANT_BACKENDS="x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint;x86_64-superos"
 ```
 
-- Defaults: `x86_64-windows` when building on Windows, otherwise `x86_64-linux;aarch64-linux;aarch64-zeropoint;x86_64-superos`.
+- Defaults to all known targets: `x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint;x86_64-superos`.
 - Only the enabled backends are compiled into the binary: an x86_64-only build contains no AArch64 code generator and no PE writer, a Windows-only build contains no ELF writer, and so on.
 - Canonical target names: `x86_64-linux`, `aarch64-linux`, `x86_64-windows`, `aarch64-zeropoint`, `x86_64-superos`. Short aliases (`x86_64`, `arm64`, ...) are still accepted.
 - An unknown target name fails with the list of known names; a known name that was not enabled in this build fails with the list of enabled backends and a reconfigure hint. There is no fallback to another backend.
