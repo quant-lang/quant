@@ -1074,7 +1074,6 @@ qu file.qu --target aarch64   # cross-compile for AArch64 (ELF)
 qu file.qu --target aarch64-zeropoint   # ZeroPoint OS (AArch64, static-PIE ELF)
 qu file.qu --target x86_64-superos      # SUPER OS (x86-64, ELF64 ET_EXEC)
 qu file.qu --emit-ir          # print intermediate representation
-qu file.qu --emit-asm         # print generated assembly
 qu file.qu --time             # print compilation time
 qu file.qu --no-compile       # semantic analysis only
 

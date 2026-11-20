@@ -116,7 +116,7 @@ Compile to a native executable:
 ./qu file.qu -o program
 ```
 
-Other options: `--emit-ir`, `--emit-asm`, `--no-compile`, `--time`.
+Other options: `--emit-ir`, `--no-compile`, `--time`.
 
 ---
 
@@ -197,7 +197,6 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 * [x] Make the trailing `;` optional after `struct` and `enum` (accept both forms).
 * [ ] Fix the docs: a non-void function needs a return on **every** path, not "at least one return".
 * [ ] Fix the docs: enum variants are now scoped (`Enum::Variant`); bare names are an error. Update `docs/lang.md` and `AI_CONTEXT.md`.
-* [ ] Remove `--emit-asm` from the README and docs. The flag no longer exists.
 
 ### P3 - Long-term features
 

@@ -572,9 +572,6 @@ section index (`elf_section_of` in `elf_writer.cpp`, `symbol_rva` in
 is an invariant rather than an enforced check: `read(buf, n)` on a literal fails
 with `-EFAULT` instead of corrupting neighbouring literals.
 
-`--emit-asm` (`fasmcodegen.cpp`) mirrors the split: `.rodata` for literals,
-`.data` for globals.
-
 PE keeps four sections: `.text`, `.data`, `.rdata` (import descriptors, ILT, IAT,
 DLL names — must stay writable for the IAT), `.rodata` (literals). `SizeOfHeaders`
 is derived from the real header end (`0x80` DOS header + 4 + 20 + 240 + N*40,
