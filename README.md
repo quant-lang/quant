@@ -30,6 +30,7 @@ using std::io;
     return 0;
 }
 ```
+
 ## Documentation
 
 The documentation is in [docs/lang.md](docs/lang.md) and code style in [docs/codestyle.md](docs/codestyle.md)
@@ -60,13 +61,13 @@ Load modules -> AST -> semantic analysis -> IR -> native binary
 * Attributes
 * Arena-based compiler memory management
 * Standard library written entirely in Quant
-  - `io`
-  - `format`
-  - `heap`
-  - `arena`
-  - `vector`
-  - `string`
-  - etc.
+  * `io`
+  * `format`
+  * `heap`
+  * `arena`
+  * `vector`
+  * `string`
+  * etc.
 * Windows standard library through `@import` and WinAPI, with no assembly runtime
 
 ---
@@ -118,6 +119,7 @@ Compile to a native executable:
 Other options: `--emit-ir`, `--emit-asm`, `--no-compile`, `--time`.
 
 ---
+
 ## Supported Targets
 
 Quant is not tied to a specific operating system. The `@syscall(N)` attribute lowers
@@ -134,7 +136,7 @@ cmake -B build -DQUANT_BACKENDS="x86_64-superos" -DQUANT_DEFAULT_TARGET="x86_64-
 ```
 
 | Target | Flag | Output | Status | Notes |
-|--------|------|--------|--------|-------|
+| -------- | ------ | -------- | -------- | ------- |
 | Linux x86-64 | *(default)* | ELF | supported | Syscall numbers use the x86-64 Linux ABI |
 | Linux AArch64 | `--target aarch64` | ELF | supported | Syscall numbers are mapped automatically |
 | Windows x86-64 | *(native on Windows)* | PE32+ | supported | WinAPI via `@import`, no direct syscalls |
@@ -149,16 +151,16 @@ OS ABI is a small, self-contained change. See
 
 ## Project Status
 
-| Component            | Status      |
-| -------------------- | ----------- |
-| Lexer                | completed   |
-| Parser               | completed   |
-| AST                  | completed   |
-| Semantic analysis    | completed   |
-| IR                   | completed   |
+| Component            | Status                      |
+| -------------------- | --------------------------- |
+| Lexer                | completed                   |
+| Parser               | completed                   |
+| AST                  | completed                   |
+| Semantic analysis    | completed                   |
+| IR                   | completed                   |
 | Native backend       | completed (Linux & Windows) |
-| Optimizations        | completed     |
-| Self-hosted compiler | in progress     |
+| Optimizations        | completed                   |
+| Self-hosted compiler | in progress                 |
 
 ---
 
@@ -206,16 +208,18 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 * [ ] refactor semantic.cpp and ir.cpp
 
 ---
+
 ## Self-hosting
+
 * [x] front-end
-  - [x] lexer
-  - [x] parser
+  * [x] lexer
+  * [x] parser
 * [ ] middle-end
-  - [ ] semantic
-  - [ ] comptime
+  * [ ] semantic
+  * [ ] comptime
 * [ ] back-end
-  - [ ] ir
-  - [ ] codegen
+  * [ ] ir
+  * [ ] codegen
 
 ---
 
@@ -229,4 +233,5 @@ Porting Quant to your own OS or adding its ABI is explicitly welcome — see
 ---
 
 ## License
+
 This project is under the [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) licence.
