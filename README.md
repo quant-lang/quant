@@ -30,9 +30,10 @@ using std::io;
     return 0;
 }
 ```
+
 ## Documentation
 
-The documentation is in [docs/lang.md](lang.md) and code style in [docs/codestyle.md](codestyle.md)
+The documentation is in [docs/lang.md](docs/lang.md) and code style in [docs/codestyle.md](docs/codestyle.md)
 
 ---
 
@@ -61,13 +62,13 @@ Load modules -> AST -> attribute lowering -> semantic analysis -> IR -> native b
 * Attributes
 * Arena-based compiler memory management
 * Standard library written entirely in Quant
-  - `io`
-  - `format`
-  - `heap`
-  - `arena`
-  - `vector`
-  - `string`
-  - etc.
+  * `io`
+  * `format`
+  * `heap`
+  * `arena`
+  * `vector`
+  * `string`
+  * etc.
 * Windows standard library through `@import` and WinAPI, with no assembly runtime
 
 ---
@@ -113,12 +114,13 @@ cmake -B build -DQUANT_USE_LIBQU=ON -DQUANT_LD=lld -DQUANT_AR=llvm-ar
 Compile to a native executable:
 
 ```bash
-./qu file.qu -o program
+./build/bin/qu file.qu -o program
 ```
 
-Other options: `--emit-ir`, `--emit-asm`, `--no-compile`, `--time`.
+Other options: `--emit-ir`, `--no-compile`, `--time`.
 
 ---
+
 ## Supported Targets
 
 Quant is not tied to a specific operating system. The `@syscall(N)` attribute lowers
@@ -135,10 +137,10 @@ cmake -B build -DQUANT_BACKENDS="x86_64-superos" -DQUANT_DEFAULT_TARGET="x86_64-
 ```
 
 | Target | Flag | Output | Status | Notes |
-|--------|------|--------|--------|-------|
+| -------- | ------ | -------- | -------- | ------- |
 | Linux x86-64 | *(default)* | ELF | supported | Syscall numbers use the x86-64 Linux ABI |
 | Linux AArch64 | `--target aarch64` | ELF | supported | Syscall numbers are mapped automatically |
-| Windows x86-64 | *(native on Windows)* | PE32+ | supported | WinAPI via `@import`, no direct syscalls |
+| Windows x86-64 | `--target x86_64-windows` | PE32+ | supported | WinAPI via `@import`, no direct syscalls |
 | [ZeroPoint](https://github.com/Operator-about/ZeroPoint) | `--target aarch64-zeropoint` | static-PIE ELF | experimental | Custom ABI with single-buffer syscalls, base `0x40000000` |
 | [SUPER OS](https://github.com/grafmorkov/super-os) | `--target x86_64-superos` | ELF64 `ET_EXEC` | experimental | x86-64 ring-3 userland, `int 0x80` syscalls, base `0x400000` |
 
@@ -150,16 +152,16 @@ OS ABI is a small, self-contained change. See
 
 ## Project Status
 
-| Component            | Status      |
-| -------------------- | ----------- |
-| Lexer                | completed   |
-| Parser               | completed   |
-| AST                  | completed   |
-| Semantic analysis    | completed   |
-| IR                   | completed   |
+| Component            | Status                      |
+| -------------------- | --------------------------- |
+| Lexer                | completed                   |
+| Parser               | completed                   |
+| AST                  | completed                   |
+| Semantic analysis    | completed                   |
+| IR                   | completed                   |
 | Native backend       | completed (Linux & Windows) |
-| Optimizations        | completed     |
-| Self-hosted compiler | in progress     |
+| Optimizations        | completed                   |
+| Self-hosted compiler | in progress                 |
 
 ---
 
@@ -196,7 +198,6 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 * [x] Make the trailing `;` optional after `struct` and `enum` (accept both forms).
 * [ ] Fix the docs: a non-void function needs a return on **every** path, not "at least one return".
 * [ ] Fix the docs: enum variants are now scoped (`Enum::Variant`); bare names are an error. Update `docs/lang.md` and `AI_CONTEXT.md`.
-* [ ] Remove `--emit-asm` from the README and docs. The flag no longer exists.
 
 ### P3 - Long-term features
 
@@ -207,16 +208,18 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 * [ ] refactor semantic.cpp and ir.cpp
 
 ---
+
 ## Self-hosting
+
 * [x] front-end
-  - [x] lexer
-  - [x] parser
+  * [x] lexer
+  * [x] parser
 * [ ] middle-end
-  - [ ] semantic
-  - [ ] comptime
+  * [ ] semantic
+  * [ ] comptime
 * [ ] back-end
-  - [ ] ir
-  - [ ] codegen
+  * [ ] ir
+  * [ ] codegen
 
 ---
 
@@ -230,4 +233,5 @@ Porting Quant to your own OS or adding its ABI is explicitly welcome — see
 ---
 
 ## License
+
 This project is under the [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) licence.

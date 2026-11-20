@@ -2,25 +2,25 @@
 
 ## Types
 
-| Type | Size | Description        |
-|------|------|--------------------|
-| void | 0    | no value           |
-| bool | 1    | boolean            |
-| i8   | 1    | signed byte        |
-| i16  | 2    | signed short       |
-| i32  | 4    | signed int         |
-| i64  | 8    | signed long        |
-| u8   | 1    | unsigned byte      |
-| u16  | 2    | unsigned short     |
-| u32  | 4    | unsigned int       |
-| u64  | 8    | unsigned long      |
-| f32  | 4    | float              |
-| f64  | 8    | double             |
-| str  | 8    | alias for `*char`  |
-| char | 1    | alias for `u8`     |
-| *T     | 8 | pointer to T       |
-| &T     | 8 | reference to T     |
-| nullptr | 8 | "no pointer" value |
+| Type    | Size | Description        |
+|---------|------|--------------------|
+| void    | 0    | no value           |
+| bool    | 1    | boolean            |
+| i8      | 1    | signed byte        |
+| i16     | 2    | signed short       |
+| i32     | 4    | signed int         |
+| i64     | 8    | signed long        |
+| u8      | 1    | unsigned byte      |
+| u16     | 2    | unsigned short     |
+| u32     | 4    | unsigned int       |
+| u64     | 8    | unsigned long      |
+| f32     | 4    | float              |
+| f64     | 8    | double             |
+| str     | 8    | alias for `*char`  |
+| char    | 1    | alias for `u8`     |
+| *T      | 8    | pointer to T       |
+| &T      | 8    | reference to T     |
+| nullptr | 8    | "no pointer" value |
 
 Integer literals are i32 by default. Float literals are f64 by default. Boolean literals `true` and `false` are `bool`.
 
@@ -76,7 +76,7 @@ This rule keeps things safe: a pointer that may be null cannot be turned into a 
 
 ## Variables
 
-```
+```qu
 i32 a = 10;            // immutable, must be initialized
 mut str b = "hello";   // mutable
 f64 c = 3.14;
@@ -89,7 +89,7 @@ Variables must have an explicit type annotation.
 
 ## Functions
 
-```
+```qu
 i32 add(i32 x, i32 y) {
     return x + y;
 }
@@ -114,7 +114,7 @@ i32 main() {
 
 ### if / else if / else
 
-```
+```qu
 if (x < 10) {
     std::io::print("small");
 }
@@ -132,7 +132,7 @@ The `if` and `else if` conditions must be of type `bool` (a compile-time error o
 
 The `while` condition must be of type `bool`.
 
-```
+```qu
 while (x > 0) {
     x--;
 }
@@ -142,7 +142,7 @@ while (x > 0) {
 
 `for` is a wrapper over `while`:
 
-```
+```qu
 for (init; cond; step) {
     // body
 }
@@ -150,7 +150,7 @@ for (init; cond; step) {
 
 is rewritten at parse time into:
 
-```
+```qu
 {
     init;
     while (cond) {
@@ -162,7 +162,7 @@ is rewritten at parse time into:
 
 Examples:
 
-```
+```qu
 for (mut i32 i = 0; i < 10; i++) {
     std::io::print(i as str);
 }
@@ -259,7 +259,7 @@ References (`&T`) are another name for an existing variable. They take 8 bytes, 
 
 Field access and indexing through a reference are automatically dereferenced:
 
-```
+```qu
 struct Point { i32 x; i32 y; };
 
 i32 main() {
@@ -271,7 +271,7 @@ i32 main() {
 
 References can be reassigned to point to different variables (the reference itself must be `mut`):
 
-```
+```qu
 struct Point { i32 x; i32 y; };
 
 i32 main() {
@@ -285,7 +285,7 @@ i32 main() {
 
 References can be passed to functions that accept reference parameters. To modify the referenced value, the parameter must be `mut`:
 
-```
+```qu
 struct Point { i32 x; i32 y; };
 
 void bump(mut &Point p) {
@@ -306,37 +306,45 @@ Note: a reference cannot be taken to a builtin value type (`i32`, `bool`, `f64`,
 ## Operators
 
 ### Arithmetic
-```
+
+```text
 +   -   *   /
 ```
 
 ### Comparison (result is `bool`)
-```
+
+```text
 ==   !=   <   <=   >   >=
 ```
 
 ### Bitwise
-```
+
+```text
 &    (bitwise AND)
 |    (bitwise OR)
 ```
+
 `&` and `|` also accept two raw pointers of the same type. The pointers are
 treated as plain addresses and the result keeps the pointer type.
 
 ### Logical (result is `bool`)
-```
+
+```text
 &&   (and - both operands true -> true)
 ||   (or  - at least one true -> true)
 ```
 
 ### Compound Assignment
-```
+
+```text
 +=   -=   *=   /=   &=   |=
 ```
+
 Each desugars to `x = x op y` at parse time.
 
 ### Precedence (lowest -> highest)
-```
+
+```text
 =   +=   -=   *=   /=   &=   |=
 ||
 &&
@@ -357,7 +365,7 @@ Each desugars to `x = x op y` at parse time.
 Converts between numeric types. Also converts numbers to string (`str` is
 `*char`, so this is a cast to a pointer).
 
-```
+```qu
 i64 a = 42 as i64;       // i32 -> i64
 i8  b = 1000 as i8;      // i32 -> i8  (truncation)
 f64 c = 10 as f64;       // i32 -> f64
@@ -372,7 +380,7 @@ Most numeric conversions happen automatically as long as they are guaranteed
 to preserve the value. If a conversion could lose information, the compiler
 rejects it and you must write an explicit as cast.
 
-```
+```qu
 i8  a = 42;             // the literal fits in i8
 u8  b = 200;            // the literal fits in u8
 i16 c = 30000;          // the literal fits in i16
@@ -380,7 +388,8 @@ f32 d = 2.5;            // the literal becomes f32
 i32 e = c;              // i16 -> i32 is a safe widening conversion
 f64 f = a;              // i8 -> f64 is also safe
 ```
-```
+
+```qu
 i8 g = 300;            // ERROR: 300 does not fit in i8
 i8 h = 200;            // ERROR: literal out of range for i8
 u8 i = -1;             // ERROR: negative values cannot be assigned to u8
@@ -393,7 +402,7 @@ Integer literals in binary expressions adapt to the other operand whenever
 possible. If both operands have different numeric types, they are promoted to
 a common type before the operation.
 
-```
+```qu
 i32 a = 5;
 i64 b = 10;
 i64 s = a + b;          // a is promoted to i64
@@ -414,7 +423,7 @@ unary ! operator only works with bool.
 
 Reinterprets the bytes of a value as a different type. Source and target must have the same size.
 
-```
+```qu
 u32 x = -1 as i32 as! u32;   // reinterpret i32 bytes as u32
 ```
 
@@ -422,7 +431,7 @@ u32 x = -1 as i32 as! u32;   // reinterpret i32 bytes as u32
 
 ## Structs
 
-```
+```qu
 struct Point {
     i32 x;
     i32 y;
@@ -435,13 +444,16 @@ i32 main() {
 ```
 
 Fields can be mutable:
-```
+
+```qu
 struct Counter {
     mut i32 val;
 };
 ```
+
 Methods are also supported
-```
+
+```qu
 struct Point {
     i32 x;
     i32 y;
@@ -452,8 +464,10 @@ struct Point {
     }
 };
 ```
+
 And generic methods
-```
+
+```qu
 struct Box<T> {
     T value;
 
@@ -470,7 +484,8 @@ struct Box<T> {
 Methods get an implicit `this` pointer to the current struct. You can use a
 field by its name (`x`) or write `this.x`. Use `this` when a parameter has the
 same name as a field, or return it to chain method calls.
-```
+
+```qu
 struct Point {
     mut i32 x;
     mut i32 y;
@@ -494,7 +509,8 @@ struct Point {
 ## Enums
 
 C-style enums with automatically assigned `i32` values starting from 0.
-```
+
+```qu
 enum Color {
     Red,    // 0
     Green,  // 1
@@ -504,14 +520,14 @@ enum Color {
 
 Variants can be accessed directly by name or qualified:
 
-```
+```qu
 i32 x = Red;          // 0
 i32 y = Color::Green; // 1
 ```
 
 Enums support attributes like `@public` and `@private`:
 
-```
+```qu
 @public enum Status {
     Ok,
     Error,
@@ -524,7 +540,7 @@ Enums support attributes like `@public` and `@private`:
 
 Structs can have type parameters with `<>`:
 
-```
+```qu
 struct Box<T> {
     T value;
 };
@@ -532,14 +548,14 @@ struct Box<T> {
 
 When you use a generic struct, pass the type argument in `<>`:
 
-```
+```qu
 @init mut Box<i32> b;
 b.value = 42;
 ```
 
 Multiple type parameters are also supported:
 
-```
+```qu
 struct Pair<A, B> {
     A first;
     B second;
@@ -552,7 +568,7 @@ Generics are compiled lazily: the concrete struct (like `Box$i32`) is created on
 
 Functions can also have type parameters:
 
-```
+```qu
 T identity<T>(T x) {
     return x;
 }
@@ -560,13 +576,13 @@ T identity<T>(T x) {
 
 Pass the type argument when calling:
 
-```
+```qu
 identity<i32>(42);
 ```
 
 Multiple type parameters work too:
 
-```
+```qu
 A swap<A, B>(A a, B b) {
     return a;
 }
@@ -580,26 +596,26 @@ Generic functions are compiled separately for each type you actually use. For ex
 
 Use `load` to import a module:
 
-```
+```qu
 load "std::io";
 ```
 
 Functions in other files are accessed via namespace:
 
-```
+```qu
 std::io::print("hello");
 std::io::exit(0);
 ```
 
 `extern` declares a function implemented outside of Quant (system calls, native runtime, or another module):
 
-```
+```qu
 extern void print(str text);
 ```
 
 Functions marked with `@syscall(N)` are lowered to a raw syscall with number N (remapped per target; on ZeroPoint and SUPER OS the number is used as the target's ABI number):
 
-```
+```qu
 @syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
 ```
 
@@ -609,7 +625,7 @@ The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) 
 
 Imports all symbols from a namespace into the current scope:
 
-```
+```qu
 load "std::io";
 using std::io;
 
@@ -646,14 +662,14 @@ Supported attributes:
 | `@hide`    | any top-level declaration            | 0    | Make all following declarations private by default   |
 | `@unhide`  | any top-level declaration            | 0    | Reset @hide — following declarations are public      |
 | `@syscall` | function (extern only)               | 1    | Lower function to raw syscall `N` (remapped per target) |
-| `@export`  | function                             | 1    | Use `name` as the function symbol in the object file |
-| `@import`  | function (extern only)               | 1-2  | Import a function from a Windows DLL                 |
+| `@export`  | function                             | 1    | Use `name` as the function symbol in the object file    |
+| `@import`  | function (extern only)               | 1-2  | Import a function from a Windows DLL                    |
 
 ### `@entry`
 
 The function with `@entry` is the program entry point (replaces `main` by name).
 
-```
+```qu
 @entry i32 start() {
     return 0;
 }
@@ -709,7 +725,7 @@ Validates a condition at compile time when the value is used (passed to a functi
 
 The guard condition must be a compile-time constant expression (literals, const variables, and comparisons between them).
 
-```
+```qu
 i32 count = 1;
 @guard(count > 0) mut i32 value;
 
@@ -721,7 +737,7 @@ work(value);              // passes: count > 0 is true at compile time
 
 If the condition is false, compilation fails:
 
-```
+```qu
 i32 count = 0;
 @guard(count > 0) mut i32 value;
 
@@ -731,7 +747,7 @@ work(value);              // error: guard failed for 'value' in call to 'work'
 
 Guard also works on struct fields:
 
-```
+```qu
 struct X {
     @guard(true) i32 data;
 };
@@ -741,7 +757,7 @@ struct X {
 
 Restricts access to the declaring module. Other modules cannot call or reference the symbol. Works on functions, variables, struct fields, and struct methods.
 
-```
+```qu
 @private i32 helper() {
     return 42;
 }
@@ -768,7 +784,7 @@ Explicitly marks a symbol as accessible from other modules. Works on functions, 
 
 Makes all following declarations private by default. Works as a switch — stays active until `@unhide`.
 
-```
+```qu
 @hide i32 internal() { return 1; }
 i32 also_internal()  { return 2; }   // private
 @public i32 api()    { return 3; }   // public (explicit override)
@@ -778,7 +794,7 @@ i32 still_private()  { return 4; }   // private
 
 Works on struct fields and methods too:
 
-```
+```qu
 @hide struct Config {
     i32 a;        // private
     i32 b;        // private
@@ -790,7 +806,7 @@ Works on struct fields and methods too:
 
 Resets `@hide`. Following declarations are public by default.
 
-```
+```qu
 @hide i32 a = 1;     // private
 @unhide i32 b = 2;   // public
 i32 c = 3;           // public
@@ -800,7 +816,7 @@ i32 c = 3;           // public
 
 Declares an `extern` function implemented as a raw syscall. The argument is the syscall number. (Windows uses `@import` instead.)
 
-```
+```qu
 @syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
 @syscall(60) extern void sys_exit(i64 code);
 ```
@@ -816,7 +832,7 @@ On the ZeroPoint target the number is used as-is (ZeroPoint ABI: write=0, read=1
 open=10, exit=20). ZeroPoint syscalls take a single `str buffer` argument in `x0`;
 everything else (length, descriptor, mode) is computed by the OS.
 
-```
+```qu
 // ZeroPoint ABI (std::zp::io / std/zp/io/io.qu)
 @syscall(0)  extern void sys_print(str buffer);
 @syscall(1)  extern void sys_read(str buffer);
@@ -828,13 +844,13 @@ goes in `rax` and the six arguments in `rdi, rsi, rdx, r10, r8, r9`; the result
 comes back in `rax`. Numbers are used as-is: read=0, write=1, mmap=9, munmap=11,
 sbrk=12, yield=24, getpid=39, exit=60. Anything else is rejected at compile time.
 
-```
+```qu
 // SUPER OS ABI (std/superos/io/io.qu)
 @syscall(1)  extern i64 sys_write(i64 fd, str buf, i64 len);
 @syscall(60) extern void sys_exit(i64 code);
 ```
 
-```
+```qu
 extern void print(str text);   // error: @syscall requires extern
 @syscall("1") extern i64 bad(); // error: argument must be an integer literal
 ```
@@ -845,7 +861,7 @@ Assigns a fixed symbol name to a function in the generated object file (instead 
 compiler-generated internal name `fn_<id>__<name>`). Useful for calling Quant functions
 from native code or for stable symbols during debugging.
 
-```
+```qu
 @export("my_func") i32 do_work() {
     return 42;
 }
@@ -859,14 +875,14 @@ through the PE import table (IAT) by the native backend. Windows only.
 The first argument is the DLL name. An optional second argument is the exported
 symbol name; when omitted, the Quant function name is used as the export name.
 
-```
+```qu
 @import("kernel32.dll", "ExitProcess") extern void sys_exit_process(u32 uExitCode);
 @import("kernel32.dll") extern u32 GetTickCount();   // imports GetTickCount
 ```
 
 On Linux, use `@syscall` instead.
 
-```
+```qu
 @import extern i64 bad();          // error: @import requires a DLL name
 extern i64 also_bad();             // error: @import requires extern
 ```
@@ -874,14 +890,18 @@ extern i64 also_bad();             // error: @import requires extern
 ---
 
 ## Regions & Pointers. Arrays
+
 Quant has region memory system. Pointers can only be declared in ```region{}```. If a region dies, all pointers are destroyed.
-```
+
+```qu
 region r {
     *void p = alloc(32);
 }
 ```
+
 Arrays are also supported and can (only) be declared in region:
-```
+
+```qu
 region r {
     *i32 p = alloc(i32, 10);
     p[0] = 42;
@@ -892,6 +912,7 @@ region r {
     std::io::print_char(10 as i8);
 }
 ```
+
 ```alloc(T, count);``` — typed allocation, returns `*T` where count is number of elements.
 ```alloc(size);``` — untyped allocation, returns `*void` where size is in bytes.
 
@@ -929,9 +950,9 @@ i64 n = read(buf, 256);
 with `r.destroy()`. Use arenas for temporary/long-lived grouped allocations;
 use `std::heap` for repeated allocations. No bounds checks are performed.
 
-
 Nested regions are also supported:
-```
+
+```qu
 region outer {
     *i32 a = alloc(i32, 1);
     region inner {
@@ -944,7 +965,7 @@ region outer {
 
 ## Comments
 
-```
+```qu
 // line comment
 
 /*
@@ -958,7 +979,7 @@ region outer {
 
 Compile-time type size query:
 
-```
+```qu
 u64 sz = sizeof(i32);   // 4
 u64 sz = sizeof(i64);   // 8
 u64 sz = sizeof(u8);    // 1
@@ -969,7 +990,7 @@ u64 sz = sizeof(str);   // 8  (str is *char, so a pointer size)
 
 In generic functions, `sizeof(T)` substitutes the concrete type at compile time:
 
-```
+```qu
 void foo<T>() {
    u64 x = sizeof(T);
 }
@@ -996,14 +1017,14 @@ mut bool c = #(10 > 3);     // true
 
 ### What can be evaluated
 
-* Integer, float and bool literals, arithmetic and comparison operators.
-* Logical operators with short-circuit `&&` / `||`.
-* `sizeof` and numeric casts.
-* Local variables with compile-time known values.
-* Enum variants.
-* Calls to defined, non-`extern` functions.
-* `if` / `else`, `while` / `for`, `switch`, `break` and `continue`.
-* Generic functions with concrete type arguments.
+- Integer, float and bool literals, arithmetic and comparison operators.
+- Logical operators with short-circuit `&&` / `||`.
+- `sizeof` and numeric casts.
+- Local variables with compile-time known values.
+- Enum variants.
+- Calls to defined, non-`extern` functions.
+- `if` / `else`, `while` / `for`, `switch`, `break` and `continue`.
+- Generic functions with concrete type arguments.
 
 For example:
 
@@ -1026,12 +1047,12 @@ i32 value = #factorial(10); // 3628800
 
 The compile-time evaluator currently does not support:
 
-* Strings.
-* Structs and arrays.
-* Pointers and references.
-* Field or index access.
-* `extern` functions or syscalls.
-* Runtime I/O.
+- Strings.
+- Structs and arrays.
+- Pointers and references.
+- Field or index access.
+- `extern` functions or syscalls.
+- Runtime I/O.
 
 If an expression cannot be evaluated at compile time, compilation fails:
 
@@ -1046,7 +1067,7 @@ Evaluation has a step budget to prevent non-terminating compile-time code. If th
 cannot evaluate expression at compile time
 ```
 
-### Generics
+### Comptime Generics
 
 `#` inside a generic function is evaluated when the generic is instantiated:
 
@@ -1084,13 +1105,12 @@ The result is computed during compilation. String conversion is currently not su
 
 ## How to Build and Run
 
-```
+```qu
 qu file.qu -o output          # compile to native binary (ELF/PE32+)
 qu file.qu --target aarch64   # cross-compile for AArch64 (ELF)
 qu file.qu --target aarch64-zeropoint   # ZeroPoint OS (AArch64, static-PIE ELF)
 qu file.qu --target x86_64-superos      # SUPER OS (x86-64, ELF64 ET_EXEC)
 qu file.qu --emit-ir          # print intermediate representation
-qu file.qu --emit-asm         # print generated assembly
 qu file.qu --time             # print compilation time
 qu file.qu --no-compile       # semantic analysis only
 
@@ -1105,10 +1125,8 @@ Quant is also being rewritten in Quant as a self-hosted compiler. That implement
 qu src/self-hosted/main.qu -o out -O3
 ```
 
-**Note**
-
+> [!NOTE]
 > The self-hosted compiler is still in progress, and the code is not finished yet.
-
 
 ### Optimization levels
 
@@ -1119,7 +1137,7 @@ The goal is simple: **make the generated program smaller and faster without chan
 Optimization levels build on each other:
 
 | Level | What happens                                                                                                                                             |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-O0` | No optimization. The IR is passed to the backend almost as-is. Useful for debugging the compiler and inspecting raw IR.                                  |
 | `-O1` | Cleans up the local mess: constant folding, algebraic simplification, constant/copy propagation, control-flow cleanup, dead temporaries and dead stores. |
 | `-O2` | Everything from `-O1`, plus compile-time evaluation of pure loops and whole-program pruning of unused functions, strings and globals.                    |
@@ -1178,21 +1196,23 @@ QUANT_SKIP=fold,branch,locals,cfg,loop,dead,dse,prune
 
 The available passes are:
 
-* `fold` - constant folding and algebraic simplification
-* `branch` - branch/jump simplification
-* `locals` - constant and copy propagation through locals
-* `cfg` - control-flow cleanup and unused-label removal
-* `loop` - compile-time evaluation of pure loops
-* `dead` - dead temporary elimination
-* `dse` - dead-store elimination
-* `prune` - unused function, string and global removal
+- `fold` - constant folding and algebraic simplification
+- `branch` - branch/jump simplification
+- `locals` - constant and copy propagation through locals
+- `cfg` - control-flow cleanup and unused-label removal
+- `loop` - compile-time evaluation of pure loops
+- `dead` - dead temporary elimination
+- `dse` - dead-store elimination
+- `prune` - unused function, string and global removal
 
 Quant includes a small benchmark tool for observing what the optimizer actually does:
 
 ```text
 build/bin/quant_bench file.qu
 ```
+
 Example:
+
 ```md
 ### tests/bench_loop_fold.qu
 
@@ -1218,11 +1238,11 @@ The native backend generates machine code directly: x86-64 (ELF/PE32+) and AArch
 The set of backends compiled into the compiler binary is fixed at CMake configure time
 with `QUANT_BACKENDS`; `--target` then selects one of the enabled targets per compilation:
 
-```
+```shell
 cmake -B build -DQUANT_BACKENDS="x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint;x86_64-superos"
 ```
 
-- Defaults: `x86_64-windows` when building on Windows, otherwise `x86_64-linux;aarch64-linux;aarch64-zeropoint;x86_64-superos`.
+- Defaults to all known targets: `x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint;x86_64-superos`.
 - Only the enabled backends are compiled into the binary: an x86_64-only build contains no AArch64 code generator and no PE writer, a Windows-only build contains no ELF writer, and so on.
 - Canonical target names: `x86_64-linux`, `aarch64-linux`, `x86_64-windows`, `aarch64-zeropoint`, `x86_64-superos`. Short aliases (`x86_64`, `arm64`, ...) are still accepted.
 - An unknown target name fails with the list of known names; a known name that was not enabled in this build fails with the list of enabled backends and a reconfigure hint. There is no fallback to another backend.
