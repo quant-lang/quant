@@ -193,13 +193,19 @@ namespace quant::symb_t {
         sym.field_names.reserve(str.fields.size());
         sym.field_types.reserve(str.fields.size());
         sym.field_attributes.reserve(str.fields.size());
+        sym.field_has_default.reserve(str.fields.size());
         sym.method_names.reserve(str.fields.size());
 
         for (const auto& value : str.fields) {
             if (const auto* field = std::get_if<ast::StructField>(&value)) {
+                bool has_init_attr = false;
+                for (const auto& a : field->attributes) {
+                    if (a.name == "init") { has_init_attr = true; break; }
+                }
                 sym.field_names.push_back(field->name);
                 sym.field_types.push_back(field->type);
                 sym.field_attributes.push_back(field->attributes);
+                sym.field_has_default.push_back(field->default_value != nullptr || has_init_attr);
             } else if (const auto* fn = std::get_if<ast::FuncStmt>(&value)) {
                 sym.method_names.push_back(fn->name);
             }
@@ -281,12 +287,17 @@ namespace quant::symb_t {
         const std::string& name,
         const std::vector<std::pair<std::string, const ast::Type*>>& fields,
         const std::vector<ast::Attribute>& attrs,
-        const std::vector<std::vector<ast::Attribute>>& field_attrs
+        const std::vector<std::vector<ast::Attribute>>& field_attrs,
+        const std::vector<bool>& field_has_default
     ) {
         StructSymbol sym;
         sym.field_names.reserve(fields.size());
         sym.field_types.reserve(fields.size());
         sym.field_attributes = field_attrs;
+        sym.field_has_default = field_has_default;
+        if (sym.field_has_default.size() != fields.size()) {
+            sym.field_has_default.assign(fields.size(), false);
+        }
         for (const auto& [fname, ftype] : fields) {
             sym.field_names.push_back(fname);
             sym.field_types.push_back(ftype);
@@ -298,12 +309,17 @@ namespace quant::symb_t {
         const std::string& name,
         const std::vector<std::pair<std::string, const ast::Type*>>& fields,
         const std::vector<ast::Attribute>& attrs,
-        const std::vector<std::vector<ast::Attribute>>& field_attrs
+        const std::vector<std::vector<ast::Attribute>>& field_attrs,
+        const std::vector<bool>& field_has_default
     ) {
         StructSymbol sym;
         sym.field_names.reserve(fields.size());
         sym.field_types.reserve(fields.size());
         sym.field_attributes = field_attrs;
+        sym.field_has_default = field_has_default;
+        if (sym.field_has_default.size() != fields.size()) {
+            sym.field_has_default.assign(fields.size(), false);
+        }
         for (const auto& [fname, ftype] : fields) {
             sym.field_names.push_back(fname);
             sym.field_types.push_back(ftype);
@@ -332,12 +348,17 @@ namespace quant::symb_t {
         const std::string& name,
         const std::vector<std::pair<std::string, const ast::Type*>>& fields,
         const std::vector<ast::Attribute>& attrs,
-        const std::vector<std::vector<ast::Attribute>>& field_attrs
+        const std::vector<std::vector<ast::Attribute>>& field_attrs,
+        const std::vector<bool>& field_has_default
     ) {
         StructSymbol sym;
         sym.field_names.reserve(fields.size());
         sym.field_types.reserve(fields.size());
         sym.field_attributes = field_attrs;
+        sym.field_has_default = field_has_default;
+        if (sym.field_has_default.size() != fields.size()) {
+            sym.field_has_default.assign(fields.size(), false);
+        }
         for (const auto& [fname, ftype] : fields) {
             sym.field_names.push_back(fname);
             sym.field_types.push_back(ftype);

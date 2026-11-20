@@ -363,14 +363,14 @@ ast::TypeKind binary_common_kind(ast::TypeKind a, ast::TypeKind b) {
 } // namespace
 
 // For runtime attributes. (Now there is no runtime attributes)
-void IRGenerator::emit_attr_lowering(const std::string& var_name) {
-    (void)var_name;
-}
+//void IRGenerator::emit_attr_lowering(const std::string& var_name) {
+//    (void)var_name;
+//}
 
-void IRGenerator::emit_attr_lowering(const std::string& var_name, const std::vector<ast::Attribute>& attrs) {
-    (void)var_name;
-    (void)attrs;
-}
+//void IRGenerator::emit_attr_lowering(const std::string& var_name, const std::vector<ast::Attribute>& attrs) {
+//    (void)var_name;
+//    (void)attrs;
+//}
 
 IRGenerator::IRGenerator(CompilerContext& c)
     : ctx(c) {}
@@ -1509,7 +1509,6 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             const ast::Type* type = nullptr;
 
             if (lookup_local(node.name, local, type)) {
-                emit_attr_lowering(node.name);
                 (void)type;
                 const uint32_t dst = new_reg();
                 emit(IRLoadLocal{ dst, local });
@@ -1873,16 +1872,24 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 base_type = base_type->pointed;
             }
 
-            // Emit attribute lowering for struct field reads (e.g. @guard)
+            // Emit attribute lowering for struct field reads (init-only)
             if (base_type && base_type->kind == ast::TypeKind::Struct) {
                 auto* sym = lookup_struct(ctx, base_type->struct_name);
                 if (sym) {
+                    bool has_init;
+                    for(const auto& attr: sym->attributes){
+                        if(attr.name == "init"){
+                            has_init = true;
+                            break;
+                        }
+                    }
+                    // Now, there is only 1 runtime attribute - @init, which set all variable values to 0 as T;
+                    // If you want to add another runtime attribute, rewrite this code
                     auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
                     if (ss) {
                         for (size_t i = 0; i < ss->field_names.size(); ++i) {
-                            if (ss->field_names[i] == node.field && i < ss->field_attributes.size()) {
-                                emit_attr_lowering(node.field, ss->field_attributes[i]);
-                                break;
+                            if (ss->field_names[i] == node.field) {
+
                             }
                         }
                     }

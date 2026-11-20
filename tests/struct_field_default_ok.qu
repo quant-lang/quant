@@ -1,0 +1,14 @@
+struct Point {
+    i32 x = 7;
+    i32 y;
+}
+
+@entry i32 main() {
+    mut Point p;
+    p.y = 3;
+    // x has a default value, so reading it must be allowed (initialized).
+    i32 copy = p.x;
+    if (copy == copy) { } else { return 1; }
+    if (p.y != 3) { return 2; }
+    return 0;
+}

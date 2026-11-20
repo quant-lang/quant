@@ -628,12 +628,18 @@ Attributes annotate declarations with extra semantics. Syntax: `@name` before a 
 
 If the attribute takes arguments: `@name(expr1, expr2)`.
 
+### Attribute lowering pass
+
+Before semantic analysis, the compiler runs an attribute-lowering pass (`AttrEvaluator`) over each module AST. This pass rewrites supported runtime attributes into explicit code/initializers so later stages (semantic analysis, IR generation) can process them uniformly.
+
+Currently the only runtime attribute handled by this pass is `@init`.
+
 Supported attributes:
 
 | Attribute  | Targets                              | Args | Description                                          |
 |------------|--------------------------------------|------|------------------------------------------------------|
 | `@entry`   | function                             | 0    | Mark function as program entry point                 |
-| `@init`    | variable                             | 0    | Suppress uninitialized variable check                |
+| `@init`    | variable / field                     | 0    | Lower to explicit zero initialization and mark as initialized |
 | `@guard`   | variable / field                      | 1    | Compile-time check: validate condition on use        |
 | `@public`  | function / variable / field / struct | 0    | Make symbol visible outside the module               |
 | `@private` | function / variable / field / struct | 0    | Hide symbol from other modules                       |
@@ -657,14 +663,45 @@ If no `@entry` is found, the linker falls back to a function named `main`.
 
 ### `@init`
 
-Declares a variable without an initializer, promising the compiler it will be initialized before use.
+Marks a variable or struct field without an explicit initializer as intentionally initialized.
+
+During the attribute-lowering pass, `@init` is rewritten to an explicit zero initialization for types that can be represented by a zero value/cast:
 
 ```
-@init i32 x;
-foo(x);                  // no "uninitialized variable" error
+@init T x;
 ```
 
-Without `@init`, an immutable variable without a value is a compile error.
+becomes one of:
+
+```
+T x = false;     // bool
+T x = 0 as T;    // value cast
+T x = 0 as! T;   // bitcast
+```
+
+Cast kind selection is based on the target type/size:
+
+- `bool` -> `false`
+- pointer/reference -> `0 as! T`
+- 4-byte scalar kinds (`i32`, `u32`, `f32`, `enum`) -> `0 as! T`
+- 1/2/8-byte scalar kinds (`i8/u8/i16/u16/i64/u64/f64`, etc.) -> `0 as T`
+- other representable sizes -> `0 as! T`
+
+Examples:
+
+```
+@init i32 x;        // lowered to: i32 x = 0 as! i32;
+@init i64 y;        // lowered to: i64 y = 0 as i64;
+@init *i32 p;       // lowered to: *i32 p = 0 as! *i32;
+
+struct Buf {
+    @init i32 len;  // lowered to a zero default value for the field
+};
+```
+
+If an explicit initializer (or struct field default value) is already present, the `@init` marker is removed.
+
+For aggregate or generic types that cannot be expressed as a scalar zero-cast in the current IR, the declaration keeps `@init` semantics so it is still treated as initialized by semantic analysis (without forcing a cast lowering).
 
 ### `@guard`
 

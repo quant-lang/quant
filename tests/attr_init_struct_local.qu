@@ -1,0 +1,13 @@
+struct Point {
+    i32 x;
+    i32 y;
+}
+
+@entry i32 main() {
+    @init mut Point p;
+    if (p.x != 0) return 1;
+    if (p.y != 0) return 2;
+    p.x = 3;
+    p.y = 4;
+    return p.x + p.y - 7;
+}

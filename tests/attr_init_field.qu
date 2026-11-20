@@ -1,0 +1,14 @@
+struct Counter {
+    @init i32 value;
+    i32 step = 1;
+};
+
+@entry i32 main() {
+    mut Counter c;
+    c.step = 2;
+    if (c.value != 0)
+        return 1;
+    if (c.step != 2)
+        return 2;
+    return 0;
+}

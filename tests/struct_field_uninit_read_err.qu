@@ -1,0 +1,13 @@
+struct Point {
+    i32 x;
+    i32 y;
+}
+
+i32 bad() {
+    mut Point p;
+    return p.x;
+}
+
+@entry i32 main() {
+    return bad();
+}

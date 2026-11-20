@@ -18,6 +18,7 @@
 #include "quant/frontend/lexer.h"
 #include "quant/frontend/parser.h"
 #include "quant/semantic/semantic.h"
+#include "quant/attributes/attr_lowering.h"
 #include "quant/support/compiler_context.h"
 
 #include "utils/options.h"
@@ -186,12 +187,13 @@ int main(int argc, char **argv)
         mm.build_graph(entry);
         if (ctx.errors.has_errors()) return 1;
 
-        // Semantic analysis
+        // Attribute lowering (e.g. @init -> explicit zero initialization)
+        // and semantic analysis.
         for (auto* mod : mm.ordered_modules()) {
-            quant::sm::SemanticAnalyzer sem(
-                ctx,
-                mod->namespace_path
-            );
+            quant::attrs::AttrEvaluator attr_eval(ctx, mod->namespace_path);
+            attr_eval.evaluate(mod->ast);
+
+            quant::sm::SemanticAnalyzer sem(ctx, mod->namespace_path);
 
             sem.analyze(mod->ast, mod);
             if (ctx.errors.has_errors()) break;

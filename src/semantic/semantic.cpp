@@ -677,6 +677,96 @@ void mark_symbol_initialized(quant::symb_t::Symbol& sym) {
     }
 }
 
+bool struct_field_has_default_marker(const quant::symb_t::StructSymbol& ss, size_t i) {
+    if (i < ss.field_has_default.size() && ss.field_has_default[i]) {
+        return true;
+    }
+    if (i < ss.field_attributes.size()) {
+        for (const auto& a : ss.field_attributes[i]) {
+            if (a.name == "init") return true;
+        }
+    }
+    return false;
+}
+
+void mark_all_struct_fields_initialized(quant::CompilerContext& ctx, quant::symb_t::VarSymbol& vs) {
+    if (!vs.type || vs.type->kind != TypeKind::Struct) return;
+    auto* sym = lookup_struct(ctx, vs.type->struct_name);
+    if (!sym) return;
+    auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
+    if (!ss) return;
+    for (const auto& name : ss->field_names) {
+        vs.initialized_fields.insert(name);
+    }
+}
+
+void seed_struct_field_defaults(quant::CompilerContext& ctx, quant::symb_t::VarSymbol& vs) {
+    if (!vs.type || vs.type->kind != TypeKind::Struct) return;
+    auto* sym = lookup_struct(ctx, vs.type->struct_name);
+    if (sym) {
+        if (auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data)) {
+            for (size_t i = 0; i < ss->field_names.size(); ++i) {
+                if (struct_field_has_default_marker(*ss, i)) {
+                    vs.initialized_fields.insert(ss->field_names[i]);
+                } else if (ctx.types.get_field_default_value(vs.type->struct_name, ss->field_names[i])) {
+                    vs.initialized_fields.insert(ss->field_names[i]);
+                }
+            }
+            return;
+        }
+    }
+    // Fallback via type metadata.
+    if (const auto* fields = ctx.types.get_struct_fields(vs.type->struct_name)) {
+        const auto* attrs = ctx.types.get_struct_field_attrs(vs.type->struct_name);
+        for (size_t i = 0; i < fields->size(); ++i) {
+            const auto& fname = (*fields)[i].first;
+            bool init = ctx.types.get_field_default_value(vs.type->struct_name, fname) != nullptr;
+            if (!init && attrs && i < attrs->size()) {
+                for (const auto& a : (*attrs)[i]) {
+                    if (a.name == "init") { init = true; break; }
+                }
+            }
+            if (init) vs.initialized_fields.insert(fname);
+        }
+    }
+}
+
+bool struct_field_is_initialized(quant::CompilerContext& ctx,
+                                 const quant::symb_t::VarSymbol& vs,
+                                 const std::string& field_name) {
+    if (vs.initialized_fields.count(field_name)) return true;
+    if (!vs.type || vs.type->kind != TypeKind::Struct) return false;
+    auto* sym = lookup_struct(ctx, vs.type->struct_name);
+    if (sym) {
+        if (auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data)) {
+            for (size_t i = 0; i < ss->field_names.size(); ++i) {
+                if (ss->field_names[i] == field_name) {
+                    if (struct_field_has_default_marker(*ss, i)) return true;
+                    break;
+                }
+            }
+        }
+    }
+    // Fallback: defaults/init markers visible through type metadata (e.g.
+    // generic struct definitions / instantiated concrete types).
+    if (ctx.types.get_field_default_value(vs.type->struct_name, field_name)) {
+        return true;
+    }
+    if (const auto* attrs = ctx.types.get_struct_field_attrs(vs.type->struct_name)) {
+        if (const auto* fields = ctx.types.get_struct_fields(vs.type->struct_name)) {
+            for (size_t i = 0; i < fields->size() && i < attrs->size(); ++i) {
+                if ((*fields)[i].first == field_name) {
+                    for (const auto& a : (*attrs)[i]) {
+                        if (a.name == "init") return true;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 const ast::Type* resolve_struct_field(
     CompilerContext& ctx,
     const ast::Type* base_type,
@@ -1407,17 +1497,36 @@ void SemanticAnalyzer::analyze_var_decl(ast::VarDecl& var, const SourceLocation&
     // already reported.
     const bool var_may_be_null = resolved_type && resolved_type->kind == TypeKind::Pointer
         && (!var.value || may_be_null(ctx, var.value));
+    // For struct-typed locals, treat the container as initialized so fields can
+    // be assigned/read individually; per-field initialization is tracked
+    // separately. (@init or value init fully initializes all fields.)
+    const bool is_struct_container =
+        resolved_type && resolved_type->kind == TypeKind::Struct && !var.value;
+    const bool declared_initialized =
+        var.value != nullptr ||
+        (has_init && !var.value) ||
+        is_struct_container ||
+        !initializer_ok;
     if (!ctx.symbols.declare_symbol(var.name, symb_t::Symbol{
         var.name,
-        symb_t::VarSymbol{resolved_type, var.is_mut, var.value != nullptr || !initializer_ok, {}, nullptr, var_may_be_null},
+        symb_t::VarSymbol{resolved_type, var.is_mut, declared_initialized, {}, nullptr, var_may_be_null},
         var.attributes
     })) {
         ctx.errors.add(loc, "Variable already declared: " + var.name);
         return;
     }
 
-    if (has_init && !var.value) {
-        ctx.symbols.mark_initialized(var.name);
+    if (resolved_type && resolved_type->kind == TypeKind::Struct) {
+        if (auto* sym = ctx.symbols.lookup(var.name)) {
+            if (auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data)) {
+                seed_struct_field_defaults(ctx, *vs);
+                // Full value initialization or explicit @init means the whole
+                // struct object (all fields) is initialized.
+                if (var.value != nullptr || (has_init && !var.value)) {
+                    mark_all_struct_fields_initialized(ctx, *vs);
+                }
+            }
+        }
     }
 
     if (has_guard) {
@@ -1486,13 +1595,16 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str, const Sou
             return;
         }
 
+
         for (const auto& attr : field.attributes) {
             analyze_attribute(attr, attrs::AttributeTarget::Field, loc);
         }
 
         if (field.default_value) {
             const ast::Type* dt = analyze_expr(field.default_value);
-            if (!dt) return;
+            if (!dt) {
+                return;
+            }
 
             AssignCheck chk = check_assignable_value(ctx, field.type, field.default_value);
             if (chk == AssignCheck::NullPtrToReference) return; // already reported
@@ -1705,6 +1817,15 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func, const SourceLocat
             current_method_struct = saved_method_struct;
             current_method_sym = saved_method_sym;
             return;
+        }
+        // Treat 'out' container as initialized so fields can be assigned/read
+        // individually and `return out;` remains valid; per-field init is
+        // tracked separately (seeded from defaults/init markers).
+        if (auto* out_sym = ctx.symbols.lookup("out")) {
+            if (auto* vs = std::get_if<symb_t::VarSymbol>(&out_sym->data)) {
+                vs->is_initialized = true;
+                seed_struct_field_defaults(ctx, *vs);
+            }
         }
     }
 
@@ -2401,6 +2522,39 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg,
     if (const auto* root = get_root_var(asg.target)) {
         if (auto* sym = ctx.symbols.lookup(root->name)) {
             mark_symbol_initialized(*sym);
+            // Whole-struct assignment initializes all fields of the target.
+            if (auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data)) {
+                if (vs->type && vs->type->kind == TypeKind::Struct) {
+                    // If target is a bare variable assignment (p = ...), all fields set.
+                    if (std::holds_alternative<ast::VarExpr>(asg.target->kind)) {
+                        mark_all_struct_fields_initialized(ctx, *vs);
+                    } else if (const auto* fe = std::get_if<ast::FieldExpr>(&asg.target->kind)) {
+                        // p.x = ... (direct field of root variable): mark that field.
+                        if (std::holds_alternative<ast::VarExpr>(fe->base->kind)) {
+                            vs->initialized_fields.insert(fe->field);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Implicit 'out' field assignment in struct-returning functions: `x = ...`
+    // lowers to writing an out field when resolved as such by resolve_lvalue.
+    if (const auto* tgt_var = std::get_if<ast::VarExpr>(&asg.target->kind)) {
+        if (current_function_return_type &&
+            current_function_return_type->kind == TypeKind::Struct) {
+            const bool is_real_symbol = ctx.symbols.lookup(tgt_var->name) != nullptr;
+            const bool is_method_field = method_field_type(tgt_var->name) != nullptr;
+            if (!is_real_symbol && !is_method_field) {
+                if (ctx.types.get_field_type(current_function_return_type->struct_name, tgt_var->name)) {
+                    if (auto* out_sym = ctx.symbols.lookup("out")) {
+                        if (auto* ovs = std::get_if<symb_t::VarSymbol>(&out_sym->data)) {
+                            ovs->initialized_fields.insert(tgt_var->name);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -2434,6 +2588,24 @@ const ast::Type* SemanticAnalyzer::analyze_field(const ast::FieldExpr& node,
                         }
                     }
                     break;
+                }
+            }
+        }
+    }
+
+    // Check definite initialization for reads of fields on local struct vars.
+    if (const auto* base_var = std::get_if<ast::VarExpr>(&node.base->kind)) {
+        if (auto* sym = ctx.symbols.lookup(base_var->name)) {
+            if (auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data)) {
+                if (vs->type && vs->type->kind == TypeKind::Struct && vs->is_initialized) {
+                    // Skip per-field checks for 'this' if it were ever represented
+                    // as a struct value (currently pointer) and for containers
+                    // initialized by a full value/@init where all fields are marked.
+                    if (!struct_field_is_initialized(ctx, *vs, node.field)) {
+                        ctx.errors.add(loc, "Use of uninitialized field '" + node.field +
+                                            "' of struct variable '" + base_var->name + "'");
+                        return nullptr;
+                    }
                 }
             }
         }

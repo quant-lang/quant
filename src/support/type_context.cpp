@@ -335,18 +335,26 @@ namespace {
     }
 
     const ast::Expr* TypeContext::get_field_default_value(const std::string& struct_name, const std::string& field_name) const {
-        // Check generic struct definitions (they store the original AST with default values)
-        for (const auto& [name, def] : generic_defs) {
-            if (name == struct_name) {
-                for (const auto& f : def.fields) {
-                    if (f.name == field_name) {
-                        return f.default_value;
-                    }
+        auto lookup_in_def = [&](const std::string& def_name) -> const ast::Expr* {
+            auto it = generic_defs.find(def_name);
+            if (it == generic_defs.end()) return nullptr;
+            for (const auto& f : it->second.fields) {
+                if (f.name == field_name) {
+                    return f.default_value;
                 }
-                return nullptr;
             }
+            return nullptr;
+        };
+
+        // Check generic struct definitions (they store original/lowered AST
+        // defaults). Also resolve mangled concrete instantiation names to base.
+        if (const ast::Expr* v = lookup_in_def(struct_name)) return v;
+        std::string base;
+        if (is_mangled_name(struct_name, base)) {
+            if (const ast::Expr* v = lookup_in_def(base)) return v;
         }
         // Non-generic structs: default values aren't stored in TypeContext
+        // (tracked via symbol metadata instead).
         return nullptr;
     }
 

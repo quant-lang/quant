@@ -1,0 +1,13 @@
+struct Pair {
+    i32 a;
+    i32 b;
+}
+
+@entry i32 main() {
+    mut Pair p;
+    p.a = 10;
+    if (p.a == 10) {
+        return p.b;
+    }
+    return 0;
+}
