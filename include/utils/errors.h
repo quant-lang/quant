@@ -13,6 +13,7 @@ struct SourceFile {
 class ErrorBag {
     std::unordered_map<std::string, SourceFile> sources;
     size_t error_count = 0;
+    size_t parse_error_count = 0;
 
     // Location used by legacy `add(message)` call sites that do not pass a
     // node explicitly. Semantic analysis and IR generation set this while
@@ -22,6 +23,7 @@ class ErrorBag {
 
     void print_carets(const SourceLocation& loc, int length, const std::string& line);
     void print(const SourceLocation& loc, int length, const std::string& msg);
+    void emit(const SourceLocation& loc, int length, const std::string& msg);
 
 public:
     class ParserException : public std::exception {};
@@ -32,11 +34,19 @@ public:
     void add(const SourceLocation& loc, const std::string& msg);
     void add(const std::string& msg);
 
+    // Syntax/parse diagnostics. Tracked separately so semantic analysis can
+    // continue after parse errors when the recovered AST is safe to analyze.
+    void add_parse(const SourceLocation& loc, int length, const std::string& msg);
+    void add_parse(const SourceLocation& loc, const std::string& msg);
+    void add_parse(const std::string& msg);
+
     void set_fallback_location(const SourceLocation& loc) { fallback_loc = loc; }
     const SourceLocation& fallback_location() const { return fallback_loc; }
 
     bool has_errors() const { return error_count > 0; }
     size_t count() const { return error_count; }
+    bool has_parse_errors() const { return parse_error_count > 0; }
+    size_t parse_errors() const { return parse_error_count; }
 };
 
 // Restores the previous fallback location on scope exit, so nested

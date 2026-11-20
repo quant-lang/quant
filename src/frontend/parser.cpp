@@ -51,7 +51,7 @@ std::string process_escapes(const std::string& raw, CompilerContext& ctx, Source
     for (size_t i = 0; i < raw.size(); ++i) {
         if (raw[i] == '\\') {
             if (i + 1 >= raw.size()) {
-                ctx.errors.add(loc, loc.length, "Invalid escape sequence at end of string");
+                ctx.errors.add_parse(loc, loc.length, "Invalid escape sequence at end of string");
                 result += '\\';
                 continue;
             }
@@ -65,8 +65,8 @@ std::string process_escapes(const std::string& raw, CompilerContext& ctx, Source
                 case '\'': result += '\''; break;
                 case '0':  result += '\0'; break;
                 default:
-                    ctx.errors.add(loc, loc.length,
-                                   "Invalid escape sequence: \\" + std::string(1, c));
+                    ctx.errors.add_parse(loc, loc.length,
+                                         "Invalid escape sequence: \\" + std::string(1, c));
                     result += c;
                     break;
             }
@@ -264,7 +264,7 @@ bool Parser::match_closing_angle() {
 }
 
 ErrorBag::ParserException Parser::error(const SourceLocation& loc, int length, const std::string& msg) {
-    ctx.errors.add(loc, length, msg);
+    ctx.errors.add_parse(loc, length, msg);
     return ErrorBag::ParserException();
 }
 

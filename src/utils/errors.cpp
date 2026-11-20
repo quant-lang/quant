@@ -68,7 +68,7 @@ void ErrorBag::print(const SourceLocation& loc, int length, const std::string& m
     }
 }
 
-void ErrorBag::add(const SourceLocation& loc, int length, const std::string& msg) {
+void ErrorBag::emit(const SourceLocation& loc, int length, const std::string& msg) {
     if (valid_location(loc)) {
         print(loc, length, msg);
         return;
@@ -86,10 +86,27 @@ void ErrorBag::add(const SourceLocation& loc, int length, const std::string& msg
     reset_color();
 }
 
+void ErrorBag::add(const SourceLocation& loc, int length, const std::string& msg) {
+    emit(loc, length, msg);
+}
+
 void ErrorBag::add(const SourceLocation& loc, const std::string& msg) {
     add(loc, loc.length, msg);
 }
 
 void ErrorBag::add(const std::string& msg) {
     add(SourceLocation{}, 0, msg);
+}
+
+void ErrorBag::add_parse(const SourceLocation& loc, int length, const std::string& msg) {
+    ++parse_error_count;
+    emit(loc, length, msg);
+}
+
+void ErrorBag::add_parse(const SourceLocation& loc, const std::string& msg) {
+    add_parse(loc, loc.length, msg);
+}
+
+void ErrorBag::add_parse(const std::string& msg) {
+    add_parse(SourceLocation{}, 0, msg);
 }

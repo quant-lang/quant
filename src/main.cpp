@@ -3,6 +3,7 @@
 #include <chrono>
 #include <fstream>
 #include <cstdlib>
+#include <unordered_set>
 
 #ifndef QUANT_USE_LIBQU
 #define QUANT_USE_LIBQU 0
@@ -185,19 +186,42 @@ int main(int argc, char **argv)
         }
 
         mm.build_graph(entry);
-        if (ctx.errors.has_errors()) return 1;
+
+        // Parse errors were already reported. When only parse errors are present,
+        // continue semantic analysis for modules whose recovered AST is intact so
+        // independent semantic errors can still be reported. Do not proceed to IR
+        // generation or codegen if any errors remain.
+        if (ctx.errors.has_errors() && ctx.errors.parse_errors() != ctx.errors.count()) {
+            return 1;
+        }
 
         // Attribute lowering (e.g. @init -> explicit zero initialization)
         // and semantic analysis.
+        std::unordered_set<quant::modules::Module*> broken;
         for (auto* mod : mm.ordered_modules()) {
+            bool dep_broken = false;
+            for (auto* dep : mod->dependencies) {
+                if (broken.count(dep)) {
+                    dep_broken = true;
+                    break;
+                }
+            }
+            if (mod->had_parse_errors || dep_broken) {
+                broken.insert(mod);
+                continue;
+            }
+
             quant::attrs::AttrEvaluator attr_eval(ctx, mod->namespace_path);
             attr_eval.evaluate(mod->ast);
 
             quant::sm::SemanticAnalyzer sem(ctx, mod->namespace_path);
 
+            size_t errors_before = ctx.errors.count();
             sem.analyze(mod->ast, mod);
-            if (ctx.errors.has_errors()) break;
             mod->analyzed = true;
+            if (ctx.errors.count() != errors_before) {
+                broken.insert(mod);
+            }
         }
         if (ctx.errors.has_errors()) return 1;
 

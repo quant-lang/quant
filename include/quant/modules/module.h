@@ -33,6 +33,7 @@ struct Module {
     std::unordered_map<std::string, SourceFile> source_files;
 
     bool analyzed = false;
+    bool had_parse_errors = false;
 };
 
 class ModuleManager {

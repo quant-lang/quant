@@ -177,9 +177,11 @@ Module* ModuleManager::build_module(const std::string& file_key,
 
     ctx.errors.add_source(file_key, SourceFile{lines});
 
+    size_t parse_errors_before = ctx.errors.parse_errors();
     lx::Lexer lex(std::string(source), ctx);
     ps::Parser parser(lex, ctx);
     auto ast = parser.parse();
+    bool file_had_parse_errors = ctx.errors.parse_errors() > parse_errors_before;
     auto imports = collect_imports(ast);
 
     // Extract module name from declaration (or fallback to path)
@@ -249,6 +251,7 @@ Module* ModuleManager::build_module(const std::string& file_key,
     }
 
     mod->source_files[file_key] = SourceFile{lines};
+    mod->had_parse_errors = mod->had_parse_errors || file_had_parse_errors;
 
     loaded_files.emplace(file_key, mod);
     return mod;
