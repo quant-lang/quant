@@ -1,0 +1,16 @@
+@entry i32 main() {
+    @init i32 a;
+    @init i64 b;
+    @init bool c;
+    @init *i32 p;
+    @init u32 u;
+    @init f64 f;
+
+    if (a != 0) return 1;
+    if (b != 0 as i64) return 2;
+    if (c) return 3;
+    if (p != 0 as! *i32) return 4;
+    if (u != 0 as! u32) return 5;
+    if (f != 0.0 as f64) return 6;
+    return 0;
+}

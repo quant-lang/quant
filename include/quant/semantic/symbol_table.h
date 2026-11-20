@@ -1,6 +1,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 #include <string>
@@ -19,6 +20,8 @@ namespace quant::symb_t {
         ast::Expr* guard_cond = nullptr;
         // True if this pointer may be null at runtime.
         bool may_be_null = false;
+        // For struct-typed variables: field names known to be initialized.
+        std::unordered_set<std::string> initialized_fields;
     };
 
     struct FuncArgSymbol {
@@ -43,6 +46,9 @@ namespace quant::symb_t {
         std::vector<std::string> field_names;
         std::vector<const ast::Type*> field_types;
         std::vector<std::vector<ast::Attribute>> field_attributes;
+        // True when the field has an explicit/default initializer or an
+        // initialization marker (e.g. @init lowered/kept by attribute lowering).
+        std::vector<bool> field_has_default;
         std::vector<std::string> method_names;
     };
     struct Symbol;
@@ -102,16 +108,19 @@ namespace quant::symb_t {
         bool declare_struct(const std::string& name,
             const std::vector<std::pair<std::string, const ast::Type*>>& fields,
             const std::vector<ast::Attribute>& attrs = {},
-            const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
+            const std::vector<std::vector<ast::Attribute>>& field_attrs = {},
+            const std::vector<bool>& field_has_default = {});
         bool declare_struct_global(const std::string& name,
             const std::vector<std::pair<std::string, const ast::Type*>>& fields,
             const std::vector<ast::Attribute>& attrs = {},
-            const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
+            const std::vector<std::vector<ast::Attribute>>& field_attrs = {},
+            const std::vector<bool>& field_has_default = {});
         bool declare_struct_in_ns(const std::vector<std::string>& ns_path,
             const std::string& name,
             const std::vector<std::pair<std::string, const ast::Type*>>& fields,
             const std::vector<ast::Attribute>& attrs = {},
-            const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
+            const std::vector<std::vector<ast::Attribute>>& field_attrs = {},
+            const std::vector<bool>& field_has_default = {});
         bool declare(const ast::RegionStmt& reg);
 
         bool declare_symbol(const std::string& name, Symbol symbol, bool preserve_owning_module = false);

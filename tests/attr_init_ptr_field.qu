@@ -1,0 +1,12 @@
+struct Holder {
+    @init *i32 ptr;
+    i32 tag;
+}
+
+@entry i32 main() {
+    mut Holder h;
+    h.tag = 42;
+    if (h.ptr != 0 as! *i32) return 1;
+    if (h.tag != 42) return 2;
+    return 0;
+}

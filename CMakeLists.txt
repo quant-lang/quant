@@ -195,6 +195,7 @@ add_library(libquant
     src/support/type_context.cpp
     src/support/symbol_path.cpp
     src/comptime/evaluator.cpp
+    src/attributes/attr_lowering.cpp
 )
 add_dependencies(libquant quant_std_embed)
 

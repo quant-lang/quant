@@ -1,0 +1,13 @@
+struct Flags {
+    bool ready;
+    i32 value;
+}
+
+@entry i32 main() {
+    mut Flags f;
+    f.value = 1;
+    if (f.ready) {
+        return 1;
+    }
+    return 0;
+}

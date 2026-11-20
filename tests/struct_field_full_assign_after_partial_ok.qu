@@ -1,0 +1,15 @@
+struct Point {
+    i32 x;
+    i32 y;
+}
+
+@entry i32 main() {
+    mut Point p;
+    p.x = 1;
+    p = Point{5, 6};
+    if (p.x != 5)
+        return 1;
+    if (p.y != 6)
+        return 2;
+    return 0;
+}

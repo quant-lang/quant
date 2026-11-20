@@ -40,16 +40,17 @@ The documentation is in [docs/lang.md](docs/lang.md) and code style in [docs/cod
 ## Architecture
 
 ```text
-Load modules -> AST -> semantic analysis -> IR -> native binary
+Load modules -> AST -> attribute lowering -> semantic analysis -> IR -> native binary
 ```
 
 ### Pipeline
 
 0. Load all modules
 1. Parse source code into AST
-2. Run semantic validation passes
-3. Generate intermediate representation
-4. Generate machine code (native backend: ELF on Linux, PE32+ on Windows)
+2. Run attribute lowering passes (rewrite supported runtime attributes, e.g. `@init`)
+3. Run semantic validation passes
+4. Generate intermediate representation
+5. Generate machine code (native backend: ELF on Linux, PE32+ on Windows)
 
 ---
 
@@ -183,7 +184,7 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 
 * [x] Add parser recovery to `switch` and `enum` bodies, like the recovery already used for structs. Braces in these constructs are not a block, and one bad case should not create many follow-up errors.
 * [ ] Continue semantic analysis after parse errors when it is safe, so more independent errors are reported.
-* [ ] Check that struct fields are initialized before they are read. Variables already have this check, but fields do not.
+* [x] Check that struct fields are initialized before they are read. Variables already have this check, but fields do not.
 * [x] Fix the development-build module root. `tests/attr_hide_pub.qu` cannot load `tests::lib_hidden` because `root_path` resolves to `build/bin`.
 
 ### P2 - Backends, standard library, docs and quality of life

@@ -80,9 +80,9 @@ struct IRGenerator {
 
     void gen_function(const ast::FuncStmt& fn);
 
-    // For runtime attributes. (Now there is no runtime attributes)
-    void emit_attr_lowering(const std::string& var_name);
-    void emit_attr_lowering(const std::string& var_name, const std::vector<ast::Attribute>& attrs);
+    // For runtime attributes. (Now there is only 1 runtime attribute - init)
+    // void emit_attr_lowering(const std::string& var_name);
+    // void emit_attr_lowering(const std::string& var_name, const std::vector<ast::Attribute>& attrs);
 
     // Statements
 
