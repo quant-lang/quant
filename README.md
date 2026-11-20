@@ -113,7 +113,7 @@ cmake -B build -DQUANT_USE_LIBQU=ON -DQUANT_LD=lld -DQUANT_AR=llvm-ar
 Compile to a native executable:
 
 ```bash
-./qu file.qu -o program
+./build/bin/qu file.qu -o program
 ```
 
 Other options: `--emit-ir`, `--no-compile`, `--time`.
