@@ -139,7 +139,7 @@ cmake -B build -DQUANT_BACKENDS="x86_64-superos" -DQUANT_DEFAULT_TARGET="x86_64-
 | -------- | ------ | -------- | -------- | ------- |
 | Linux x86-64 | *(default)* | ELF | supported | Syscall numbers use the x86-64 Linux ABI |
 | Linux AArch64 | `--target aarch64` | ELF | supported | Syscall numbers are mapped automatically |
-| Windows x86-64 | *(native on Windows)* | PE32+ | supported | WinAPI via `@import`, no direct syscalls |
+| Windows x86-64 | `--target x86_64-windows` | PE32+ | supported | WinAPI via `@import`, no direct syscalls |
 | [ZeroPoint](https://github.com/Operator-about/ZeroPoint) | `--target aarch64-zeropoint` | static-PIE ELF | experimental | Custom ABI with single-buffer syscalls, base `0x40000000` |
 | [SUPER OS](https://github.com/grafmorkov/super-os) | `--target x86_64-superos` | ELF64 `ET_EXEC` | experimental | x86-64 ring-3 userland, `int 0x80` syscalls, base `0x400000` |
 
