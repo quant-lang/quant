@@ -52,6 +52,11 @@ struct vec<T> {
         return size as u64;
     }
 
+    // clear - clear the vector. does not actually remove the data. ready to be used again.
+    void clear() {
+        size = 0;
+    }
+
     // free - release the backing allocation. free() on an empty vector
     // is a no-op.
     void free() {
