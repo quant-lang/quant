@@ -1,0 +1,49 @@
+load "std::string";
+load "std::vector";
+
+using std::string;
+using std::vector;
+
+struct Numbers {
+    @init mut vec<i32> items;
+
+    void add(i32 value) {
+        items.push(value);
+    }
+
+    i32 at(i32 index) {
+        return items.get(index);
+    }
+};
+
+struct Named {
+    @init mut string name;
+
+    void set(str value) {
+        name = makestr(value);
+    }
+
+    u64 length() {
+        return name.len();
+    }
+};
+
+@entry i32 main() {
+    @init mut Numbers n;
+    n.add(10);
+    n.add(20);
+
+    if (n.at(0) != 10)
+        return 1;
+    if (n.at(1) != 20)
+        return 2;
+
+    n.items.free();
+
+    @init mut Named named;
+    named.set("ok");
+    if (named.length() != 2)
+        return 3;
+
+    return 0;
+}

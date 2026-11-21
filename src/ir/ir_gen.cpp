@@ -1524,6 +1524,19 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     if (lookup_local("this", self_local, self_type)) {
                         const uint32_t self_ptr = new_reg();
                         emit(IRLoadLocal{ self_ptr, self_local });
+
+                        // Struct-typed fields are stored inline. Return their
+                        // address so method calls / nested access operate on
+                        // the embedded object instead of loading its first
+                        // qword as a pointer.
+                        if (field.second->kind == ast::TypeKind::Struct) {
+                            const uint32_t off = new_reg();
+                            emit(IRLoadConst{ off, static_cast<int64_t>(field.first) });
+                            const uint32_t dst = new_reg();
+                            emit(IRBinary{ IRBinaryOp::Add, dst, self_ptr, off, ast::TypeKind::U64 });
+                            return dst;
+                        }
+
                         const uint32_t dst = new_reg();
                         emit(IRGetField{ dst, self_ptr, field.first });
                         return dst;
@@ -1705,6 +1718,20 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                         if (lookup_local("this", self_local, self_type)) {
                             const uint32_t self_ptr = new_reg();
                             emit(IRLoadLocal{ self_ptr, self_local });
+
+                            // Struct-typed fields live inline in the receiver,
+                            // so copy the source object qword by qword instead
+                            // of storing the source pointer into the field.
+                            if (field.second->kind == ast::TypeKind::Struct) {
+                                const uint32_t v = gen_expr_as(*node.value, field.second);
+                                for (uint32_t sub : struct_flat_offsets(field.second, ctx)) {
+                                    const uint32_t part = new_reg();
+                                    emit(IRGetField{ part, v, sub });
+                                    emit(IRSetField{ self_ptr, part, static_cast<uint32_t>(field.first + sub) });
+                                }
+                                return v;
+                            }
+
                             const uint32_t v = gen_expr_as(*node.value, field.second);
                             emit(IRSetField{ self_ptr, v, field.first });
                             return v;
