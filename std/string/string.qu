@@ -30,11 +30,13 @@
 //   - makestr copies; the source can be a literal or any NUL-terminated
 //     buffer.
 //   - get and len are unchecked.
+//   - try_get is checked and returns option<char>.
 //   - free must be called to release memory.
 
 module "std::string";
 
 load "std::heap";
+load "std::types";
 
 struct string {
     mut *char data;
@@ -60,6 +62,14 @@ struct string {
     // get - the byte at `index` (unchecked).
     char get(u64 index) {
         return data[index];
+    }
+
+    // try_get - the byte at `index`, or none when out of bounds.
+    option<char> try_get(u64 index) {
+        if (index < len) {
+            return option_some<char>(data[index]);
+        }
+        return option_none<char>();
     }
 
     // eq - compare the contents with `other`.

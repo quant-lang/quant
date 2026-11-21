@@ -18,10 +18,12 @@
 // Notes:
 //   - free must be called to release memory.
 //   - get bounds are not checked.
+//   - try_get is bounds-checked and returns option<T>.
 
 module "std::vector";
 
 load "std::heap";
+load "std::types";
 
 struct vec<T> {
     mut *T data;
@@ -45,6 +47,14 @@ struct vec<T> {
     // get - read the element at `index` (unchecked).
     T get(i32 index) {
         return data[index];
+    }
+
+    // try_get - read the element at `index`, or none when out of bounds.
+    option<T> try_get(i32 index) {
+        if (index >= 0 && index < size) {
+            return option_some<T>(data[index]);
+        }
+        return option_none<T>();
     }
 
     // len - number of elements in the vector.

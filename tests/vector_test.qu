@@ -1,7 +1,9 @@
 load "std::io";
 load "std::vector";
+load "std::types";
 
 using std::vector;
+using std::types;
 
 void main() {
     @init mut vec<i32> v;
@@ -25,6 +27,15 @@ void main() {
     std::io::print("get[2]: ");
     std::io::print(v.get(2) as str);
     std::io::print("\n");
+
+    // try_get is bounds-checked and returns option<T>
+    option<i32> g = v.try_get(1);
+    if (!g.is_some()) { std::io::print("BAD try_get in-bounds\n"); return; }
+    if (g.unwrap() != 20) { std::io::print("BAD try_get value\n"); return; }
+    option<i32> oob = v.try_get(99);
+    if (!oob.is_none()) { std::io::print("BAD try_get oob\n"); return; }
+    option<i32> neg = v.try_get(-1);
+    if (!neg.is_none()) { std::io::print("BAD try_get neg\n"); return; }
 
     v.free();
 }

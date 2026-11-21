@@ -1,7 +1,9 @@
 load "std::io";
 load "std::string";
+load "std::types";
 
 using std::string;
+using std::types;
 
 // expect - report a failed expectation.
 bool expect(bool cond, str what) {
@@ -73,6 +75,18 @@ i32 main() {
     if (!expect(empty.is_empty(), "empty"))
         return 1;
     if (!expect(empty.len() == 0, "empty len"))
+        return 1;
+
+    // try_get is bounds-checked and returns option<char>
+    option<char> g = a.try_get(6);
+    if (!expect(g.is_some(), "try_get in-bounds"))
+        return 1;
+    if (!expect(g.unwrap() == (119 as char), "try_get value"))
+        return 1;
+    option<char> oob = a.try_get(99);
+    if (!expect(oob.is_none(), "try_get oob"))
+        return 1;
+    if (!expect(empty.try_get(0).is_none(), "try_get empty"))
         return 1;
 
     empty.free();
