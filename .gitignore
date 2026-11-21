@@ -68,3 +68,6 @@ quant-self-hosted/
 out
 __pycache__
 log.md
+
+.direnv/
+
