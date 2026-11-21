@@ -99,7 +99,7 @@ def main():
             unexpected_exitcode += 1
             unexpected_exitcode_list.append(rel_path)
 
-    total = pass_count + expected_err + unexpected_err + unexpected_ok
+    total = pass_count + expected_err + unexpected_err + unexpected_ok + unexpected_exitcode
 
     print("")
     print("========================================")
@@ -113,7 +113,7 @@ def main():
     print(f"  Expected errors:   {expected_err}")
     print(f"  UNEXPECTED errors: {unexpected_err}")
     print(f"  UNEXPECTED passes: {unexpected_ok}")
-    print(f"  UNEXPECTED exit codes: {unexpected_ok}")
+    print(f"  UNEXPECTED exit codes: {unexpected_exitcode}")
     print("========================================")
 
     if unexpected_err_list:
