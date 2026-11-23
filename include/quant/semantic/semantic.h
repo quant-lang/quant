@@ -23,6 +23,8 @@ class SemanticAnalyzer {
 
         CompilerContext& ctx;
         const ast::Type* current_function_return_type = nullptr;
+        // Current function key in the same <struct>::<name> form IR gen uses.
+        std::string current_function_name;
         std::vector<std::string> module_namespace;
         std::vector<std::string> namespace_path;
         modules::Module* current_module = nullptr;

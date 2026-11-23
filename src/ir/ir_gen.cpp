@@ -1441,6 +1441,15 @@ void IRGenerator::gen_region(const ast::RegionStmt& reg) {
     region_stack.pop_back();
 }
 
+std::string IRGenerator::implicit_call_mangled(const ast::CallExpr& call) {
+    if (!current_func || current_func->name.empty()) return {};
+    auto fn_it = ctx.generic_call_mangles.find(current_func->name);
+    if (fn_it == ctx.generic_call_mangles.end()) return {};
+    auto call_it = fn_it->second.find(&call);
+    if (call_it == fn_it->second.end()) return {};
+    return call_it->second;
+}
+
 const ast::Type* IRGenerator::expr_static_type(const ast::Expr& expr) {
     return std::visit(overloaded{
         [&](const ast::VarExpr& v) -> const ast::Type* {
@@ -1536,7 +1545,10 @@ const ast::Type* IRGenerator::expr_static_type(const ast::Expr& expr) {
                         support::join_namespace(support::flatten_path(c.callee)),
                         args);
                 } else if (!c.resolved_mangled_name.empty()) {
-                    mangled = c.resolved_mangled_name;
+                    mangled = implicit_call_mangled(c);
+                    if (mangled.empty()) {
+                        mangled = c.resolved_mangled_name;
+                    }
                 }
                 if (!mangled.empty()) {
                     auto it = ctx.generic_return_types.find(mangled);
@@ -2350,9 +2362,12 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 }
                 mangled = ctx.types.mangle_func_name(support::join_namespace(callee_path), resolved_type_args);
             } else if (!node.resolved_mangled_name.empty()) {
-                // Implicit generic call: the semantic pass resolved the
-                // concrete (mangled) instantiation name for us.
-                mangled = node.resolved_mangled_name;
+                // Implicit generic call. The shared node keeps the last
+                // instantiation name, so prefer the record for this function.
+                mangled = implicit_call_mangled(node);
+                if (mangled.empty()) {
+                    mangled = node.resolved_mangled_name;
+                }
             }
             const bool is_generic_call = !node.type_args.empty() || !node.resolved_mangled_name.empty();
 

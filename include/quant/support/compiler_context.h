@@ -61,6 +61,13 @@ namespace quant {
         // Needed by IR gen to emit implicit widening casts on call arguments.
         std::unordered_map<std::string, std::vector<const ast::Type*>> generic_arg_types;
 
+        // Mangled name of an inferred generic call, keyed by enclosing function
+        // and call node. The node is shared, so resolved_mangled_name is stale.
+        std::unordered_map<
+            std::string,
+            std::unordered_map<const ast::CallExpr*, std::string>
+        > generic_call_mangles;
+
         // Concrete generic struct names whose methods were already monomorphized
         // (e.g. "Box$4"), so lazy method instantiation is idempotent.
         std::unordered_set<std::string> instantiated_generic_methods;

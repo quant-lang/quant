@@ -1776,6 +1776,11 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func, const SourceLocat
     const ast::Type* prev_return_type = current_function_return_type;
     current_function_return_type = func.return_type;
 
+    const std::string saved_function_name = std::move(current_function_name);
+    current_function_name = func.struct_name
+        ? std::string(func.struct_name) + "::" + func.name
+        : func.name;
+
     const std::string saved_method_struct = std::move(current_method_struct);
     const symb_t::StructSymbol* saved_method_sym = current_method_sym;
     current_method_struct = func.struct_name ? std::string(func.struct_name) : std::string();
@@ -1797,6 +1802,7 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func, const SourceLocat
     for (const auto& arg : func.args) {
         if (!ctx.symbols.declare(arg)) {
             ctx.errors.add(loc, "Duplicate function argument: " + arg.name);
+            current_function_name = saved_function_name;
             current_function_return_type = prev_return_type;
             current_method_struct = saved_method_struct;
             current_method_sym = saved_method_sym;
@@ -1814,6 +1820,7 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func, const SourceLocat
         out_var.attributes = {};
         if (!ctx.symbols.declare(out_var)) {
             ctx.errors.add(loc, "Failed to declare implicit 'out' variable");
+            current_function_name = saved_function_name;
             current_function_return_type = prev_return_type;
             current_method_struct = saved_method_struct;
             current_method_sym = saved_method_sym;
@@ -1841,6 +1848,7 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func, const SourceLocat
     }
 
     current_function_return_type = prev_return_type;
+    current_function_name = saved_function_name;
     current_method_struct = saved_method_struct;
     current_method_sym = saved_method_sym;
 }
@@ -2984,6 +2992,10 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call,
         // Mangle the concrete function name
         std::string mangled = ctx.types.mangle_func_name(qualified_func_name, resolved_type_args);
         const_cast<ast::CallExpr&>(call).resolved_mangled_name = mangled;
+        if (current_type_subst && !current_type_subst->empty() &&
+            !current_function_name.empty()) {
+            ctx.generic_call_mangles[current_function_name][&call] = mangled;
+        }
 
         // Check if already instantiated
         auto* concrete_sym = ctx.symbols.lookup(mangled);
