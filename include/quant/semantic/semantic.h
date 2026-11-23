@@ -29,6 +29,8 @@ class SemanticAnalyzer {
         bool is_in_region = false;
         int loop_depth = 0;           // nesting depth of while loops
         int break_depth = 0;          // nesting depth of loops and switches ('break' targets)
+        int dynamic_depth = 0;        // nesting depth of dynamic constructs (buffers allowed)
+        int namespace_depth = 0;      // nesting depth of namespace blocks (module-level only)
         const std::unordered_map<std::string, const ast::Type*>* current_type_subst = nullptr;
 
         // Struct that the currently analyzed function is a method of (empty
@@ -64,10 +66,9 @@ class SemanticAnalyzer {
         void analyze_switch(ast::SwitchStmt& stmt, const SourceLocation& loc);
         void analyze_region(const ast::RegionStmt& reg);
         void analyze_using(const ast::UsingStmt& us, const SourceLocation& loc);
-        void analyze_attribute(const ast::Attribute& attribute, const attrs::AttributeTarget target,
-                               const SourceLocation& loc);
-        void check_visibility(const symb_t::Symbol& sym, const std::string& context,
-                              const SourceLocation& loc);
+        void analyze_dynamic_stmt(ast::DynamicStmt& d, const SourceLocation& loc);
+        void analyze_attribute(const ast::Attribute& attribute, const attrs::AttributeTarget target, const SourceLocation& loc);
+        void check_visibility(const symb_t::Symbol& sym, const std::string& context, const SourceLocation& loc);
         void check_arg_guard(const ast::Expr* arg, const std::string& call_name);
         const ast::Type* analyze_method_call(const ast::CallExpr& call,
                                              const std::string& struct_name,

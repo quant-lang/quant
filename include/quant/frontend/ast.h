@@ -298,6 +298,12 @@ namespace quant::ast {
         std::string name;
         Block* body = nullptr;
     };
+    struct DynamicStmt{
+        Block* body = nullptr;
+
+        FuncStmt* on_begin_func = nullptr;
+        FuncStmt* on_end_func = nullptr;
+    };
     struct ModuleDecl {
         std::string name;
         std::vector<Attribute> attributes;
@@ -336,6 +342,7 @@ namespace quant::ast {
         EnumDecl,
         ModuleDecl,
         LoadStmt,
+        DynamicStmt,
         UsingStmt
     >;
 

@@ -198,6 +198,7 @@ bool is_declaration_stmt(const ast::Stmt& stmt) {
            std::holds_alternative<ast::StructDecl>(stmt.kind) ||
            std::holds_alternative<ast::EnumDecl>(stmt.kind) ||
            std::holds_alternative<ast::UsingStmt>(stmt.kind) ||
+           std::holds_alternative<ast::DynamicStmt>(stmt.kind) ||
            std::holds_alternative<ast::VarDecl>(stmt.kind);
 }
 
@@ -503,6 +504,11 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
                     }
                     namespace_stack.pop_back();
                 },
+                [&](const ast::DynamicStmt& d) {
+                    // Register the onbegin/onend functions inside the dynamic
+                    // body so IRGen can resolve calls to them.
+                    if (d.body) self(self, d.body->stmts, module);
+                },
                 [&](const auto&) {}
             }, stmt->kind);
         }
@@ -575,6 +581,11 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
                         self(self, ns.body->stmts, module);
                     }
                     namespace_stack.pop_back();
+                },
+                [&](const ast::DynamicStmt& d) {
+                    // Buffer declarations inside the dynamic body become
+                    // program globals.
+                    if (d.body) self(self, d.body->stmts, module);
                 },
                 [&](const auto&) {}
             }, stmt->kind);
@@ -1340,6 +1351,17 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
 
         [&](const ast::RegionStmt& node) {
             gen_region(node);
+        },
+
+        [&](const ast::DynamicStmt& d) {
+            // Only the body's statements need emitting. The rest is handled
+            // by function collection and global generation.
+            if (d.body) {
+                for (const auto* child : d.body->stmts) {
+                    if (child)
+                        gen_stmt(*child);
+                }
+            }
         },
 
         [&](const auto&) {

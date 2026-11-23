@@ -25,14 +25,24 @@ module "std::io";
 @import("kernel32.dll", "SetFilePointerEx") extern i32 sys_set_file_pointer(i64 hFile, i64 liDistanceToMove, *void lpNewFilePointer, u32 dwMoveMethod);
 @import("kernel32.dll", "FlushFileBuffers") extern i32 sys_flush_file_buffers(i64 hFile);
 
-@init mut i64 g_stdout;
-@init mut i64 g_stdin;
-@init mut i64 g_stderr;
+dynamic {
+    @init mut i64 g_stdout;
+    @init mut i64 g_stdin;
+    @init mut i64 g_stderr;
+
+    @onbegin void win_io_stdout_dyn_on_begin() {}
+    @onend   void win_io_stdout_dyn_on_end()   {}
+}
 
 // Scratch location for the WinAPI "bytes transferred" out-parameter.
 // The Quant `&` operator only works on non-scalars, so it's a struct.
 struct IoScratch { i64 v; };
-@init mut IoScratch g_scratch;
+dynamic {
+    @init mut IoScratch g_scratch;
+
+    @onbegin void win_io_scratch_dyn_on_begin() {}
+    @onend   void win_io_scratch_dyn_on_end()   {}
+}
 
 // qk_io_init - cache the standard handles. Called by the generated entry stub.
 @export("qk_io_init") void qk_io_init() {
@@ -69,7 +79,12 @@ void eprint(str text) {
 // ByteBuf - single-byte buffer for the read/write calls.
 // `&` needs a non-scalar, so a bare `char` variable cannot be passed to WinAPI.
 struct ByteBuf { char c; };
-@init mut ByteBuf g_byte_buf;
+dynamic {
+    @init mut ByteBuf g_byte_buf;
+
+    @onbegin void win_io_bytebuf_dyn_on_begin() {}
+    @onend   void win_io_bytebuf_dyn_on_end()   {}
+}
 
 // print_char - print one byte to stdout.
 void print_char(char c) {
@@ -108,7 +123,12 @@ i64 read_char() {
 }
 
 struct FpScratch { i64 v; };
-@init mut FpScratch g_fp;
+dynamic {
+    @init mut FpScratch g_fp;
+
+    @onbegin void win_io_fp_dyn_on_begin() {}
+    @onend   void win_io_fp_dyn_on_end()   {}
+}
 
 // open - open/create a file. flags = dwDesiredAccess (e.g. GENERIC_WRITE = 0x40000000),
 // mode = dwCreationDisposition (e.g. CREATE_ALWAYS = 2). Returns a handle, or < 0 on failure.

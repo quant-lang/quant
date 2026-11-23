@@ -1,3 +1,8 @@
 module "tests::lib_priv_var";
 
-@private mut i32 x = 10;
+dynamic {
+    @private mut i32 x = 10;
+
+    @onbegin void lib_priv_var_dyn_on_begin() {}
+    @onend   void lib_priv_var_dyn_on_end()   {}
+}

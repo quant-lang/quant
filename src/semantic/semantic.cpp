@@ -1273,6 +1273,20 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     collect_declarations(ns.body->stmts);
                 }
             },
+            [&](const ast::DynamicStmt& d) {
+                // Register the @onbegin/@onend functions of each dynamic
+                // construct as module-level symbols, like other top-level
+                // functions.
+                if (!d.body) return;
+                for (const auto* s : d.body->stmts) {
+                    if (!s) continue;
+                    if (const auto* fn = std::get_if<ast::FuncStmt>(&s->kind)) {
+                        if (!ctx.symbols.declare(*fn)) {
+                            ctx.errors.add(s->loc, "Function redeclaration: " + fn->name);
+                        }
+                    }
+                }
+            },
             [&](const ast::EnumDecl& enm) {
                 const ast::Type* enum_type = ctx.types.get_enum(
                     full_qualified(module_namespace, namespace_path, enm.name)
@@ -1316,6 +1330,7 @@ void SemanticAnalyzer::analyze_stmt(ast::Stmt* stmt) {
         [&](const ast::LoadStmt&) {},
         [&](const ast::UsingStmt& n) { analyze_using(n, stmt->loc); },
         [&](const ast::RegionStmt& n) { analyze_region(n); },
+        [&](ast::DynamicStmt& n){ analyze_dynamic_stmt(n, stmt->loc);},
         [&](const auto&) {
             ctx.errors.add(stmt->loc, "Unsupported statement node in semantic analysis");
             return;
@@ -1432,6 +1447,12 @@ void SemanticAnalyzer::analyze_var_decl(ast::VarDecl& var, const SourceLocation&
     if (!var.type) {
         ctx.errors.add(loc, "Variable declaration missing type: " + var.name);
         return;
+    }
+
+    // Mutable variables outside dynamic constructs are banned: dynamics are
+    // the only place where global buffers may live.
+    if (var.is_mut && dynamic_depth == 0 && !current_function_return_type) {
+        ctx.errors.add(loc, "Mutable variables are not allowed outside dynamic constructs");
     }
 
     // Substitute generic type params if in a concrete instantiation context
@@ -1634,9 +1655,11 @@ void SemanticAnalyzer::analyze_enum_decl(const ast::EnumDecl& enm, const SourceL
 void SemanticAnalyzer::analyze_namespace_stmt(const ast::NamespaceStmt& stmt) {
     NamespaceGuard guard(ctx.symbols, stmt.name);
 
+    ++namespace_depth;
     if (stmt.body) {
         analyze_block(stmt.body);
     }
+    --namespace_depth;
 }
 
 void SemanticAnalyzer::analyze_expr_stmt(const ast::ExprStmt& expr) {
@@ -1996,6 +2019,61 @@ void SemanticAnalyzer::analyze_region(const ast::RegionStmt& reg) {
     }
 
     is_in_region = prev;
+}
+void SemanticAnalyzer::analyze_dynamic_stmt(ast::DynamicStmt& d, const SourceLocation& loc) {
+    if (!d.body) {
+        ctx.errors.add(loc, "Dynamic construct without a body");
+        return;
+    }
+
+    if (dynamic_depth > 0) {
+        ctx.errors.add(loc, "Nested dynamic constructs are not allowed");
+        return;
+    }
+    if (namespace_depth > 0 || current_function_return_type != nullptr) {
+        ctx.errors.add(loc, "Dynamic constructs are only allowed at the top level of a module");
+        return;
+    }
+
+    ++dynamic_depth;
+    for (auto* s : d.body->stmts) {
+        if (!s) continue;
+
+        if (auto* var = std::get_if<ast::VarDecl>(&s->kind)) {
+            // Buffer declarations inside the dynamic body are analyzed as
+            // module-level declarations (they become program globals via the
+            // DynamicStmt visitor in IRGenerator::collect_globals_in_stmts).
+            analyze_var_decl(*var, s->loc);
+        } else if (std::holds_alternative<ast::DynamicStmt>(s->kind)) {
+            ctx.errors.add(s->loc, "Nested dynamic constructs are not allowed");
+        } else if (auto* func = std::get_if<ast::FuncStmt>(&s->kind)) {
+            analyze_func(*func, s->loc);
+
+            for (const auto& attr : func->attributes) {
+                if (attr.name == "onbegin") {
+                    if (d.on_begin_func) {
+                        ctx.errors.add(s->loc, "Dynamic construct has multiple @onbegin functions");
+                    } else {
+                        d.on_begin_func = func;
+                    }
+                } else if (attr.name == "onend") {
+                    if (d.on_end_func) {
+                        ctx.errors.add(s->loc, "Dynamic construct has multiple @onend functions");
+                    } else {
+                        d.on_end_func = func;
+                    }
+                }
+            }
+        }
+    }
+    --dynamic_depth;
+
+    if (!d.on_begin_func) {
+        ctx.errors.add(loc, "Dynamic construct requires an @onbegin function");
+    }
+    if (!d.on_end_func) {
+        ctx.errors.add(loc, "Dynamic construct requires an @onend function");
+    }
 }
 
 void SemanticAnalyzer::analyze_using(const ast::UsingStmt& us, const SourceLocation& loc) {

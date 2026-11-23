@@ -48,6 +48,10 @@ namespace quant::attrs{
                       | AttributeTarget::Struct | AttributeTarget::Module, 0, 0}},
 	{ "syscall", {"syscall", std::string(),{}, AttributeTarget::Function, 1, 1}},
 		{ "export", {"export", std::string(),{}, AttributeTarget::Function, 1, 1}},
-	{ "import", {"import", std::string(),{}, AttributeTarget::Function, 1, 2}}
+	{ "import", {"import", std::string(),{}, AttributeTarget::Function, 1, 2}},
+	// Functions marked @onbegin / @onend inside a `dynamic` construct get
+	// called in the entry main function (see src/attributes/attr_lowering.cpp).
+	{ "onbegin", { "onbegin", std::string(), {}, AttributeTarget::Function, 0, 0 }},
+	{ "onend",   { "onend",   std::string(), {}, AttributeTarget::Function, 0, 0 }}
 	};
 }

@@ -1,0 +1,16 @@
+load "std::io";
+using std::io;
+
+dynamic {
+    @onbegin void ob1() { println("ob1"); }
+    @onend   void oe1() { println("oe1"); }
+}
+dynamic {
+    @onbegin void ob2() { println("ob2"); }
+    @onend void oe2() { println("oe2"); }
+}
+
+@entry i32 main() {
+    println("main");
+    return 0;
+}

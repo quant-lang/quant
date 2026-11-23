@@ -1,0 +1,20 @@
+load "std::io";
+using std::io;
+
+dynamic {
+    mut i32 dyn_counter = 0;
+
+    @onbegin void init_dyn() {
+        dyn_counter = 10;
+        std::io::println("Dynamic on begin function works!");
+    }
+
+    @onend void done_dyn() {
+        std::io::println("Dynamic on end function works!");
+    }
+}
+
+@entry i32 main() {
+    std::io::println(dyn_counter as str);
+    return 0;
+}

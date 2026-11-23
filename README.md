@@ -40,7 +40,7 @@ The documentation is in [docs/lang.md](docs/lang.md) and code style in [docs/cod
 ## Architecture
 
 ```text
-Load modules -> AST -> attribute lowering -> semantic analysis -> IR -> native binary
+Load modules -> AST -> attribute lowering -> semantic analysis -> dynamic constructions attribute lowering -> IR -> native binary
 ```
 
 ### Pipeline

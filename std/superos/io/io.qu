@@ -62,7 +62,12 @@ void eprint(str text) {
 struct ByteBuf { 
     char c; 
 };
-@init mut ByteBuf g_byte_buf;
+dynamic {
+    @init mut ByteBuf g_byte_buf;
+
+    @onbegin void superos_io_dyn_on_begin() {}
+    @onend   void superos_io_dyn_on_end()   {}
+}
 
 // print_char - print a single byte to stdout.
 void print_char(char c) {

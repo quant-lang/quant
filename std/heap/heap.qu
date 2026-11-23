@@ -25,7 +25,12 @@ module "std::heap";
 
 @syscall(9) extern i64 sys_mmap(u64 addr, u64 length, i64 prot, i64 flags, i64 fd, i64 offset);
 
-@init mut u64 heap_head;
+dynamic {
+    @init mut u64 heap_head;
+
+    @onbegin void heap_dyn_on_begin() {}
+    @onend   void heap_dyn_on_end()   {}
+}
 
 // clear_alloc_bit - clear the "allocated" flag (bit 0) of a block header.
 u64 clear_alloc_bit(u64 size_flags) {

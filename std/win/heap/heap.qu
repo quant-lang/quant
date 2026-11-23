@@ -7,7 +7,12 @@ module "std::heap";
 
 @import("kernel32.dll", "VirtualAlloc") extern *void sys_virtual_alloc(*void lpAddress, u64 dwSize, u32 flAllocationType, u32 flProtect);
 
-@init mut u64 heap_head;
+dynamic {
+    @init mut u64 heap_head;
+
+    @onbegin void win_heap_dyn_on_begin() {}
+    @onend   void win_heap_dyn_on_end()   {}
+}
 
 // clear_alloc_bit - clear the "allocated" flag (bit 0) of a block header.
 u64 clear_alloc_bit(u64 size_flags) {

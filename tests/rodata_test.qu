@@ -1,6 +1,11 @@
 load "std::io";
 
-@init mut i64 g_counter;
+dynamic {
+    @init mut i64 g_counter;
+
+    @onbegin void rodata_dyn_on_begin() {}
+    @onend   void rodata_dyn_on_end()   {}
+}
 
 i32 main() {
     mut str a = "alpha";

@@ -322,6 +322,22 @@ namespace quant::lx {
         std::string text(buffer.data() + start, pos - start);
 
         switch(str_hash(text.c_str())) {
+            // Types
+            case str_hash("void"): return make_token(TOKEN_VOID);
+            case str_hash("bool"): return make_token(TOKEN_BOOL);
+            case str_hash("i8"):   return make_token(TOKEN_I8);
+            case str_hash("i16"):  return make_token(TOKEN_I16);
+            case str_hash("i32"):  return make_token(TOKEN_I32);
+            case str_hash("i64"):  return make_token(TOKEN_I64);
+            case str_hash("u8"):   return make_token(TOKEN_U8);
+            case str_hash("u16"):  return make_token(TOKEN_U16);
+            case str_hash("u32"):  return make_token(TOKEN_U32);
+            case str_hash("u64"):  return make_token(TOKEN_U64);
+            case str_hash("f32"):  return make_token(TOKEN_F32);
+            case str_hash("f64"):  return make_token(TOKEN_F64);
+            case str_hash("str"):  return make_token(TOKEN_STR_TYPE);
+            case str_hash("char"): return make_token(TOKEN_CHAR_TYPE);
+
             case str_hash("if"): return make_token(TOKEN_IF);
             case str_hash("else"): return make_token(TOKEN_ELSE);
             case str_hash("while"):return make_token(TOKEN_WHILE);
@@ -342,21 +358,6 @@ namespace quant::lx {
             case str_hash("module"): return make_token(TOKEN_MODULE);
             case str_hash("extern"): return make_token(TOKEN_EXTERN);
 
-            // Types
-            case str_hash("void"): return make_token(TOKEN_VOID);
-            case str_hash("bool"): return make_token(TOKEN_BOOL);
-            case str_hash("i8"):   return make_token(TOKEN_I8);
-            case str_hash("i16"):  return make_token(TOKEN_I16);
-            case str_hash("i32"):  return make_token(TOKEN_I32);
-            case str_hash("i64"):  return make_token(TOKEN_I64);
-            case str_hash("u8"):   return make_token(TOKEN_U8);
-            case str_hash("u16"):  return make_token(TOKEN_U16);
-            case str_hash("u32"):  return make_token(TOKEN_U32);
-            case str_hash("u64"):  return make_token(TOKEN_U64);
-            case str_hash("f32"):  return make_token(TOKEN_F32);
-            case str_hash("f64"):  return make_token(TOKEN_F64);
-            case str_hash("str"):  return make_token(TOKEN_STR_TYPE);
-            case str_hash("char"): return make_token(TOKEN_CHAR_TYPE);
             case str_hash("as"): return make_token(TOKEN_AS);
             case str_hash("sizeof"): return make_token(TOKEN_SIZEOF);
             case str_hash("region"): return make_token(TOKEN_REGION);
@@ -364,6 +365,7 @@ namespace quant::lx {
             case str_hash("true"): return make_token(TOKEN_TRUE);
             case str_hash("false"): return make_token(TOKEN_FALSE);
             case str_hash("nullptr"): return make_token(TOKEN_NULLPTR);
+            case str_hash("dynamic"): return make_token(TOKEN_DYNAMIC);
         }
         return make_token(TOKEN_IDENT);
     }

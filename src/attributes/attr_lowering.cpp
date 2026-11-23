@@ -115,6 +115,9 @@ void AttrEvaluator::visit_stmt(ast::Stmt* stmt) {
         [&](ast::RegionStmt& node) {
             visit_block(node.body);
         },
+        [&](ast::DynamicStmt& node) {
+            visit_block(node.body);
+        },
         [](auto&) {
             // No runtime-attribute lowering needed for other statements.
         }
@@ -214,6 +217,108 @@ void AttrEvaluator::remove_init_attr(std::vector<ast::Attribute>& attrs) {
     attrs.erase(std::remove_if(attrs.begin(), attrs.end(), [](const ast::Attribute& a) {
         return a.name == "init";
     }), attrs.end());
+}
+
+namespace {
+
+void collect_dynamics(const std::vector<ast::Stmt*>& stmts, std::vector<ast::DynamicStmt*>& out) {
+    for (auto* s : stmts) {
+        if (!s) 
+            continue;
+        if (auto* d = std::get_if<ast::DynamicStmt>(&s->kind)) {
+            out.push_back(d);
+        } else if (auto* ns = std::get_if<ast::NamespaceStmt>(&s->kind)) {
+            if (ns->body) 
+                collect_dynamics(ns->body->stmts, out);
+        }
+    }
+}
+
+// Find the program entry statement: the one whose function is marked with
+// @entry, or the function named "main".
+ast::Stmt* find_entry_main_stmt(std::vector<ast::Stmt*>& stmts) {
+    ast::Stmt* by_name = nullptr;
+    for (auto* s : stmts) {
+        if (!s) continue;
+        if (auto* fn = std::get_if<ast::FuncStmt>(&s->kind)) {
+            if (std::any_of(fn->attributes.begin(), fn->attributes.end(),
+                            [](const ast::Attribute& a) { return a.name == "entry"; })) {
+                return s;
+            }
+            if (!by_name && fn->name == "main") {
+                by_name = s;
+            }
+        } else if (auto* ns = std::get_if<ast::NamespaceStmt>(&s->kind)) {
+            if (ns->body) {
+                if (auto* found = find_entry_main_stmt(ns->body->stmts)) return found;
+            }
+        }
+    }
+    return by_name;
+}
+
+// A bare call statement to the given function, e.g. for the @onbegin calls
+// inserted into the entry main function.
+ast::Stmt* make_func_call_stmt(CompilerContext& ctx, const ast::FuncStmt* callee, const SourceLocation& loc) {
+    auto* callee_expr = memory::make<ast::Expr>(ctx.ast_arena);
+    callee_expr->kind = ast::VarExpr{ callee->name };
+
+    auto* expr = memory::make<ast::Expr>(ctx.ast_arena);
+    expr->kind = ast::CallExpr{ callee_expr, {}, {}, {} };
+    expr->loc = loc;
+
+    auto* stmt = memory::make<ast::Stmt>(ctx.ast_arena);
+    stmt->kind = ast::ExprStmt{ expr };
+    stmt->loc = loc;
+    return stmt;
+}
+
+} // namespace
+
+void lower_dynamics(CompilerContext& ctx, modules::Module& mod) {
+    std::vector<ast::DynamicStmt*> dynamics;
+    collect_dynamics(mod.ast, dynamics);
+
+    std::vector<ast::DynamicStmt*> onbegin_dyns, onend_dyns;
+    for (auto* d : dynamics) {
+        if (d->on_begin_func) onbegin_dyns.push_back(d);
+        if (d->on_end_func) onend_dyns.push_back(d);
+    }
+    if (onbegin_dyns.empty() && onend_dyns.empty()) {
+        return;
+    }
+
+    ast::Stmt* main_stmt = find_entry_main_stmt(mod.ast);
+    auto* main_fn = main_stmt ? std::get_if<ast::FuncStmt>(&main_stmt->kind) : nullptr;
+    if (!main_fn || !main_fn->body) {
+        // No entry main (e.g. library modules): dynamics are just metadata,
+        // there is nothing to substitute calls into.
+        return;
+    }
+
+    // @onbegin calls: at the start of the body, in dynamic declaration order.
+    // @onend calls: right before the trailing return (if any), otherwise at
+    // the end of the body; reverse dynamic order (destructors).
+    auto* body = main_fn->body;
+    auto& stmts = body->stmts;
+
+    std::vector<ast::Stmt*> onend_calls;
+    for (auto it = onend_dyns.rbegin(); it != onend_dyns.rend(); ++it) {
+        onend_calls.push_back(make_func_call_stmt(ctx, (*it)->on_end_func, main_stmt->loc));
+    }
+
+    std::vector<ast::Stmt*> new_stmts;
+    for (auto* d : onbegin_dyns) {
+        new_stmts.push_back(make_func_call_stmt(ctx, d->on_begin_func, main_stmt->loc));
+    }
+    new_stmts.insert(new_stmts.end(), stmts.begin(), stmts.end());
+
+    if (!stmts.empty() && std::holds_alternative<ast::ReturnStmt>(stmts.back()->kind)) {
+        new_stmts.insert(new_stmts.end() - 1, onend_calls.begin(), onend_calls.end());
+    } else {
+        new_stmts.insert(new_stmts.end(), onend_calls.begin(), onend_calls.end());
+    }
+    body->stmts = std::move(new_stmts);
 }
 
 } // namespace quant::attrs

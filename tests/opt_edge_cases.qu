@@ -1,7 +1,12 @@
 load "std::io";
 using std::io;
 
-mut i32 g_counter = 0;
+dynamic {
+    mut i32 g_counter = 0;
+
+    @onbegin void dyn_on_begin() {}
+    @onend   void dyn_on_end()   {}
+}
 
 void tick() { g_counter = g_counter + 1; }
 
