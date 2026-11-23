@@ -1463,10 +1463,11 @@ void SemanticAnalyzer::analyze_var_decl(ast::VarDecl& var, const SourceLocation&
 
     bool initializer_ok = true;
     if (var.value) {
-        // For standalone struct init (type_ref == nullptr), pass the variable's declared type
+        // Give implicit `{...}` initializers the declared type. Refresh it
+        // each analysis because generic bodies are shared.
         if (auto* si = std::get_if<ast::StructInitExpr>(&var.value->kind)) {
-            if (!si->type_ref) {
-                // Create a TypeExpr node from the variable's declared type
+            if (!si->type_ref ||
+                std::holds_alternative<ast::TypeExpr>(si->type_ref->kind)) {
                 si->type_ref = memory::make<ast::Expr>(ctx.ast_arena, ast::TypeExpr{ resolved_type }, var.value->loc);
             }
         }
@@ -3230,7 +3231,16 @@ const ast::Type* SemanticAnalyzer::analyze_struct_init(const ast::StructInitExpr
     if (node.type_ref) {
         if (auto* var = std::get_if<ast::VarExpr>(&node.type_ref->kind)) {
             if (!node.type_args.empty()) {
-                struct_type = ctx.types.get_generic_instantiation(var->name, node.type_args);
+                // The body is shared, so resolve `T` for this instantiation.
+                std::vector<const Type*> resolved_args;
+                for (const auto* arg : node.type_args) {
+                    const Type* resolved = arg;
+                    if (current_type_subst && !current_type_subst->empty()) {
+                        resolved = ctx.types.substitute_type(resolved, *current_type_subst);
+                    }
+                    resolved_args.push_back(canonicalize_struct_type(resolved));
+                }
+                struct_type = ctx.types.get_generic_instantiation(var->name, resolved_args);
             }
             if (!struct_type) {
                 struct_type = ctx.types.get_struct(var->name);
@@ -3483,8 +3493,8 @@ const ast::Type* SemanticAnalyzer::analyze_sizeof(const ast::SizeofExpr& n,
                             type->to_string(ctx) + "'");
         return nullptr;
     }
-    // Update the AST node with the resolved type so IR gen uses the concrete type
-    const_cast<ast::SizeofExpr&>(n).type = type;
+    // Do not write the concrete type back into the shared body; IR gen
+    // substitutes at read time.
     return ctx.types.get_builtin(TypeKind::U64);
 }
 

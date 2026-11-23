@@ -1,0 +1,32 @@
+// Regression: operators in shared generic bodies must use the current
+// instantiation integer type. Signed division and comparison used to follow
+// whichever instantiation was analyzed last.
+
+T add<T>(T a, T b) { return a + b; }
+T divide<T>(T a, T b) { return a / b; }
+bool less<T>(T a, T b) { return a < b; }
+T shr<T>(T a, T n) { return a >> n; }
+T neg<T>(T a) { return -a; }
+
+@entry i32 main() {
+    // Signed first, unsigned last: stale types would show up here.
+    if (add<i32>(-5, 3) != -2) { return 1; }
+    if (divide<i32>(-6, 4) != -1) { return 2; }
+    if (!less<i32>(-1, 1)) { return 3; }
+    if (shr<i32>(-8, 1) != -4) { return 4; }
+    if (neg<i32>(5) != -5) { return 5; }
+
+    if (add<u64>(5, 3) != 8) { return 6; }
+    if (divide<u64>(8, 2) != 4) { return 7; }
+    if (!less<u64>(1, 2)) { return 8; }
+    if (shr<u64>(8, 1) != 4) { return 9; }
+
+    // Same checks after the unsigned instantiations exist.
+    if (add<i32>(-7, 2) != -5) { return 10; }
+    if (divide<i32>(-9, 3) != -3) { return 11; }
+    if (!less<i32>(-2, 2)) { return 12; }
+    if (shr<i32>(-16, 2) != -4) { return 13; }
+    if (neg<i32>(8) != -8) { return 14; }
+
+    return 0;
+}

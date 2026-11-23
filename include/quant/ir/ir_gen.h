@@ -65,6 +65,10 @@ struct IRGenerator {
     // generic params (e.g. opt_none<T> inside slice_at<i32>).
     const std::unordered_map<std::string, const ast::Type*>* current_type_subst = nullptr;
 
+    // Expected type for an implicit `{...}` initializer, from the enclosing
+    // declaration or call.
+    const ast::Type* struct_init_expected = nullptr;
+
     struct RegionInfo {
         Local region_local;  // local slot holding pointer to Region struct
     };
@@ -101,6 +105,13 @@ struct IRGenerator {
 private:
 
     // Helpers
+
+    // Resolve expression types from the current scopes instead of the
+    // stale `resolved_type` in the shared AST.
+    const ast::Type* expr_static_type(const ast::Expr& expr);
+
+    // Concrete type of a struct literal whose args may still be generic.
+    const ast::Type* struct_init_type(const ast::StructInitExpr& node);
 
     Reg new_reg();
     Local new_local();
