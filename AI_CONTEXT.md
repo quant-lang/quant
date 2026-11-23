@@ -455,13 +455,15 @@ Semantics:
   the std and test files that used `@init mut` module globals into dynamics:
   std/format, std/heap, std/io, std/superos/io, std/win/heap, std/win/io,
   tests/rodata_test, tests/lib_priv_var, tests/opt_edge_cases.)
-- Pass `quant::attrs::lower_dynamics(ctx, mod)` runs after sema, before IRGen
-  (main.cpp: right after `sem.analyze()`). It collects dynamics, finds the
-  entry main (`@entry` attr or a function named `main`, mirroring the
-  backend's `find_entry`) — if there is no entry main, it returns silently
-  (metadata only for library modules) — inserts `@onbegin` calls at the start
-  of the body in dynamic declaration order, and `@onend` calls in reverse
-  order before the trailing `return` (or at the end of the body).
+- Pass `quant::attrs::lower_dynamics(ctx, mm.ordered_modules())` runs once
+  after semantic analysis of all modules, before IRGen. It collects dynamics
+  from every loaded module (including library/`std` modules, which have no
+  entry point of their own), finds the program entry main (`@entry` attr or a
+  function named `main`, mirroring the backend's `Linker::find_entry`), and
+  inserts `@onbegin` calls at the start of its body in dynamic declaration
+  order, plus `@onend` calls in reverse order before the trailing `return`
+  (or at the end of the body). Injected calls use the hook's fully qualified
+  module path so IRGen can resolve hooks from other modules.
 - `SemanticAnalyzer::analyze_dynamic_stmt` analyzes the body: buffer
   `VarDecl`s are analyzed as module-level declarations; `FuncStmt`s are
   analyzed via `analyze_func` and matched against `@onbegin`/`@onend`

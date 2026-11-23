@@ -221,47 +221,88 @@ void AttrEvaluator::remove_init_attr(std::vector<ast::Attribute>& attrs) {
 
 namespace {
 
-void collect_dynamics(const std::vector<ast::Stmt*>& stmts, std::vector<ast::DynamicStmt*>& out) {
+// Fully qualified path of a hook function. Library/std hooks live in their
+// own module namespace, so a bare name would not resolve in the entry module.
+struct HookCall {
+    std::vector<std::string> path;
+};
+
+void collect_dyn_hooks(const std::vector<ast::Stmt*>& stmts,
+                       const std::vector<std::string>& module_ns,
+                       std::vector<std::string>& ns_stack,
+                       std::vector<HookCall>& onbegin,
+                       std::vector<HookCall>& onend) {
+    auto add_hook = [&](ast::FuncStmt* fn, std::vector<HookCall>& out) {
+        if (!fn) return;
+        auto path = module_ns;
+        path.insert(path.end(), ns_stack.begin(), ns_stack.end());
+        path.push_back(fn->name);
+        out.push_back(HookCall{std::move(path)});
+    };
+
     for (auto* s : stmts) {
-        if (!s) 
-            continue;
+        if (!s) continue;
         if (auto* d = std::get_if<ast::DynamicStmt>(&s->kind)) {
-            out.push_back(d);
+            add_hook(d->on_begin_func, onbegin);
+            add_hook(d->on_end_func, onend);
         } else if (auto* ns = std::get_if<ast::NamespaceStmt>(&s->kind)) {
-            if (ns->body) 
-                collect_dynamics(ns->body->stmts, out);
+            if (!ns->body) continue;
+            ns_stack.push_back(ns->name);
+            collect_dyn_hooks(ns->body->stmts, module_ns, ns_stack, onbegin, onend);
+            ns_stack.pop_back();
         }
     }
 }
 
-// Find the program entry statement: the one whose function is marked with
-// @entry, or the function named "main".
-ast::Stmt* find_entry_main_stmt(std::vector<ast::Stmt*>& stmts) {
-    ast::Stmt* by_name = nullptr;
+// Mirror Linker::find_entry(): an @entry function wins globally over any
+// function simply named "main".
+template<class Pred>
+ast::Stmt* find_entry_stmt(const std::vector<ast::Stmt*>& stmts, Pred pred) {
     for (auto* s : stmts) {
         if (!s) continue;
         if (auto* fn = std::get_if<ast::FuncStmt>(&s->kind)) {
-            if (std::any_of(fn->attributes.begin(), fn->attributes.end(),
-                            [](const ast::Attribute& a) { return a.name == "entry"; })) {
-                return s;
-            }
-            if (!by_name && fn->name == "main") {
-                by_name = s;
-            }
+            if (pred(*fn)) return s;
         } else if (auto* ns = std::get_if<ast::NamespaceStmt>(&s->kind)) {
             if (ns->body) {
-                if (auto* found = find_entry_main_stmt(ns->body->stmts)) return found;
+                if (auto* found = find_entry_stmt(ns->body->stmts, pred)) return found;
             }
         }
     }
-    return by_name;
+    return nullptr;
 }
 
-// A bare call statement to the given function, e.g. for the @onbegin calls
-// inserted into the entry main function.
-ast::Stmt* make_func_call_stmt(CompilerContext& ctx, const ast::FuncStmt* callee, const SourceLocation& loc) {
-    auto* callee_expr = memory::make<ast::Expr>(ctx.ast_arena);
-    callee_expr->kind = ast::VarExpr{ callee->name };
+ast::Stmt* find_entry_main(const std::vector<modules::Module*>& modules) {
+    auto has_entry_attr = [](const ast::FuncStmt& fn) {
+        return std::any_of(fn.attributes.begin(), fn.attributes.end(),
+                           [](const ast::Attribute& a) { return a.name == "entry"; });
+    };
+    auto is_named_main = [](const ast::FuncStmt& fn) { return fn.name == "main"; };
+
+    for (auto* mod : modules) {
+        if (mod) {
+            if (auto* s = find_entry_stmt(mod->ast, has_entry_attr)) return s;
+        }
+    }
+    for (auto* mod : modules) {
+        if (mod) {
+            if (auto* s = find_entry_stmt(mod->ast, is_named_main)) return s;
+        }
+    }
+    return nullptr;
+}
+
+// A call statement to the hook at `path` (e.g. std::io::io_dyn_on_begin),
+// inserted into the entry function.
+ast::Stmt* make_func_call_stmt(CompilerContext& ctx,
+                               const std::vector<std::string>& path,
+                               const SourceLocation& loc) {
+    ast::Expr* callee_expr = nullptr;
+    for (const auto& part : path) {
+        auto* part_expr = make_expr(ctx, ast::VarExpr{part}, loc);
+        callee_expr = callee_expr
+            ? make_expr(ctx, ast::NamespaceExpr{callee_expr, part_expr}, loc)
+            : part_expr;
+    }
 
     auto* expr = memory::make<ast::Expr>(ctx.ast_arena);
     expr->kind = ast::CallExpr{ callee_expr, {}, {}, {} };
@@ -275,24 +316,20 @@ ast::Stmt* make_func_call_stmt(CompilerContext& ctx, const ast::FuncStmt* callee
 
 } // namespace
 
-void lower_dynamics(CompilerContext& ctx, modules::Module& mod) {
-    std::vector<ast::DynamicStmt*> dynamics;
-    collect_dynamics(mod.ast, dynamics);
-
-    std::vector<ast::DynamicStmt*> onbegin_dyns, onend_dyns;
-    for (auto* d : dynamics) {
-        if (d->on_begin_func) onbegin_dyns.push_back(d);
-        if (d->on_end_func) onend_dyns.push_back(d);
+void lower_dynamics(CompilerContext& ctx, const std::vector<modules::Module*>& modules) {
+    std::vector<HookCall> onbegin_hooks, onend_hooks;
+    for (auto* mod : modules) {
+        if (!mod) continue;
+        std::vector<std::string> ns_stack;
+        collect_dyn_hooks(mod->ast, mod->namespace_path, ns_stack, onbegin_hooks, onend_hooks);
     }
-    if (onbegin_dyns.empty() && onend_dyns.empty()) {
+    if (onbegin_hooks.empty() && onend_hooks.empty()) {
         return;
     }
 
-    ast::Stmt* main_stmt = find_entry_main_stmt(mod.ast);
+    ast::Stmt* main_stmt = find_entry_main(modules);
     auto* main_fn = main_stmt ? std::get_if<ast::FuncStmt>(&main_stmt->kind) : nullptr;
     if (!main_fn || !main_fn->body) {
-        // No entry main (e.g. library modules): dynamics are just metadata,
-        // there is nothing to substitute calls into.
         return;
     }
 
@@ -303,13 +340,13 @@ void lower_dynamics(CompilerContext& ctx, modules::Module& mod) {
     auto& stmts = body->stmts;
 
     std::vector<ast::Stmt*> onend_calls;
-    for (auto it = onend_dyns.rbegin(); it != onend_dyns.rend(); ++it) {
-        onend_calls.push_back(make_func_call_stmt(ctx, (*it)->on_end_func, main_stmt->loc));
+    for (auto it = onend_hooks.rbegin(); it != onend_hooks.rend(); ++it) {
+        onend_calls.push_back(make_func_call_stmt(ctx, it->path, main_stmt->loc));
     }
 
     std::vector<ast::Stmt*> new_stmts;
-    for (auto* d : onbegin_dyns) {
-        new_stmts.push_back(make_func_call_stmt(ctx, d->on_begin_func, main_stmt->loc));
+    for (const auto& hook : onbegin_hooks) {
+        new_stmts.push_back(make_func_call_stmt(ctx, hook.path, main_stmt->loc));
     }
     new_stmts.insert(new_stmts.end(), stmts.begin(), stmts.end());
 

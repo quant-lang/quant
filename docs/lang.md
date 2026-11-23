@@ -932,7 +932,7 @@ A dynamic must be placed at the top level of a module. Dynamics inside other dyn
 
 Each dynamic must contain one `@onbegin` and one `@onend` function. Missing functions or multiple functions are compile errors.
 
-The entry function is the one marked with `@entry`, or named `main` if no `@entry` is present. Dynamic calls are inserted after semantic analysis: `@onbegin` calls are inserted at the start of the entry function, and `@onend` calls are inserted before the entry function's final `return` (or at the end of its body); multiple dynamics run in reverse declaration order. If a module has no entry function, the dynamics are metadata only - no calls are inserted.
+The entry function is the one marked with `@entry`, or named `main` if no `@entry` is present. Dynamic calls are inserted after semantic analysis: `@onbegin` calls are inserted at the start of the entry function, and `@onend` calls are inserted before the entry function's final `return` (or at the end of its body); multiple dynamics run in reverse declaration order. Dynamics are collected from every loaded module, including library/`std` modules - such modules do not need an entry function of their own for their `@onbegin`/`@onend` functions to be called.
 
 Mutable global variables outside `dynamic` constructs are compile errors - the only way to declare mutable globals is via `dynamic`.
 

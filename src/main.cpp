@@ -218,16 +218,16 @@ int main(int argc, char **argv)
 
             size_t errors_before = ctx.errors.count();
             sem.analyze(mod->ast, mod);
-            // Substitute the contents of all `dynamic` constructs into the
-            // entry main function (@onbegin/@onend calls). Runs after sema
-            // and before IR generation.
-            quant::attrs::lower_dynamics(ctx, *mod);
             mod->analyzed = true;
             if (ctx.errors.count() != errors_before) {
                 broken.insert(mod);
             }
         }
         if (ctx.errors.has_errors()) return 1;
+
+        // Inject dynamic hooks into the entry point across all modules.
+        // Runs once after sema and before IRGen
+        quant::attrs::lower_dynamics(ctx, mm.ordered_modules());
 
         // Windows only, because Linux has compile only flag(-c) and checks @entry before ld cmd;
         if (link_spec.needs_pre_link_validation) {

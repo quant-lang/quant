@@ -1,0 +1,7 @@
+load "std::io";
+load "tests::lib_dynamic_hooks";
+
+@entry i32 main() {
+    std::io::println("main");
+    return 0;
+}

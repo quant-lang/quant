@@ -35,8 +35,11 @@ private:
     static void remove_init_attr(std::vector<ast::Attribute>& attrs);
 };
 
-// Insert @onbegin calls at the start of main and @onend calls in reverse
-// order before the final return or at the end. Runs after semantic analysis.
-void lower_dynamics(CompilerContext& ctx, modules::Module& mod);
+// Insert @onbegin calls at the start of the program entry function and
+// @onend calls in reverse order before its final return (or at the end of
+// its body). Dynamics from every loaded module are collected, including
+// library/std modules that have no entry function of their own. Runs once,
+// after semantic analysis of all modules and before IR generation.
+void lower_dynamics(CompilerContext& ctx, const std::vector<modules::Module*>& modules);
 
 } // namespace quant::attrs

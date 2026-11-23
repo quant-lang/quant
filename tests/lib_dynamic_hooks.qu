@@ -1,0 +1,8 @@
+module "tests::lib_dynamic_hooks";
+
+load "std::io";
+
+dynamic {
+    @onbegin void lib_dyn_begin() { std::io::println("lib begin"); }
+    @onend   void lib_dyn_end()   { std::io::println("lib end"); }
+}
