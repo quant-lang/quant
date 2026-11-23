@@ -1,0 +1,66 @@
+// Regression: an implicit generic call inside a shared generic body must use
+// the current instantiation mangled name. The call node is shared, so
+// resolved_mangled_name only remembers the last instantiation.
+
+struct Point {
+    mut i32 x;
+    mut i32 y;
+};
+
+struct Box<T> {
+    mut T v;
+};
+
+struct Holder<T> {
+    mut T v;
+
+    T get() { return id(v); }
+};
+
+T id<T>(T v) { return v; }
+T pick<T>(T a, T b) { return a; }
+
+T call_id<T>(T v) { return id(v); }
+T call_id2<T>(T v) { return id(id(v)); }
+T call_pick<T>(T a, T b) { return pick(a, b); }
+Box<T> call_make<T>(T v) { return make(v); }
+
+Box<T> make<T>(T v) {
+    @init mut Box<T> b;
+    b.v = v;
+    return b;
+}
+
+@entry i32 main() {
+    // The last analyzed instantiation used to win, so test both orders.
+    if (call_id<i32>(5) != 5) { return 1; }
+    Point p = call_id<Point>(Point{6, 7});
+    if (p.x != 6 || p.y != 7) { return 2; }
+
+    Point q = call_id<Point>(Point{8, 9});
+    if (q.x != 8 || q.y != 9) { return 3; }
+    if (call_id<i32>(10) != 10) { return 4; }
+
+    if (call_id2<i32>(11) != 11) { return 5; }
+    Point r = call_id2<Point>(Point{12, 13});
+    if (r.x != 12 || r.y != 13) { return 6; }
+
+    if (call_pick<i32>(14, 15) != 14) { return 7; }
+    Point s = call_pick<Point>(Point{16, 17}, Point{18, 19});
+    if (s.x != 16 || s.y != 17) { return 8; }
+
+    Box<i32> bi = call_make<i32>(20);
+    if (bi.v != 20) { return 9; }
+    Box<Point> bp = call_make<Point>(Point{21, 22});
+    if (bp.v.x != 21 || bp.v.y != 22) { return 10; }
+
+    @init mut Holder<i32> hi;
+    hi.v = 23;
+    if (hi.get() != 23) { return 11; }
+    @init mut Holder<Point> hp;
+    hp.v = Point{24, 25};
+    Point t = hp.get();
+    if (t.x != 24 || t.y != 25) { return 12; }
+
+    return 0;
+}

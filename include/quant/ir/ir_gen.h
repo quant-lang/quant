@@ -113,6 +113,9 @@ private:
     // Concrete type of a struct literal whose args may still be generic.
     const ast::Type* struct_init_type(const ast::StructInitExpr& node);
 
+    // Semantics mangled name for an implicit generic call in this function.
+    std::string implicit_call_mangled(const ast::CallExpr& call);
+
     Reg new_reg();
     Local new_local();
     Label new_label();
