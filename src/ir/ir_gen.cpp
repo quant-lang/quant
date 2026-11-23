@@ -63,6 +63,64 @@ auto lookup_struct = [](CompilerContext& ctx, const std::string& struct_name) ->
     return resolve_qualified(ctx, support::split_path(struct_name));
 };
 
+// Matches SemanticAnalyzer::canonicalize_struct_type so instantiated method
+// names resolve the same way.
+const ast::Type* canonicalize_ir_type(CompilerContext& ctx, const ast::Type* type) {
+    if (!type) return type;
+
+    if (type->kind == ast::TypeKind::Pointer && type->pointed) {
+        const ast::Type* pointed = canonicalize_ir_type(ctx, type->pointed);
+        return pointed != type->pointed ? ctx.types.get_pointer(pointed) : type;
+    }
+    if (type->kind == ast::TypeKind::Reference && type->pointed) {
+        const ast::Type* pointed = canonicalize_ir_type(ctx, type->pointed);
+        return pointed != type->pointed ? ctx.types.get_reference(pointed) : type;
+    }
+    if (type->kind != ast::TypeKind::Struct) return type;
+
+    std::vector<const ast::Type*> new_args;
+    bool args_changed = false;
+    for (const ast::Type* arg : type->type_args) {
+        const ast::Type* new_arg = canonicalize_ir_type(ctx, arg);
+        new_args.push_back(new_arg);
+        if (new_arg != arg) args_changed = true;
+    }
+
+    std::string base = type->struct_name;
+    std::string unmangled;
+    if (ctx.types.is_mangled_name(base, unmangled)) {
+        base = unmangled;
+    } else {
+        auto dollar = base.find('$');
+        if (dollar != std::string::npos) base = base.substr(0, dollar);
+    }
+
+    if (base.find("::") != std::string::npos) {
+        if (args_changed) {
+            return ctx.types.get_generic_instantiation(base, new_args);
+        }
+        return type;
+    }
+
+    // Generic base names stay as written; non-generic structs get their
+    // module qualifier.
+    if (ctx.types.get_generic_struct(base)) {
+        if (!args_changed) return type;
+        return ctx.types.get_generic_instantiation(base, new_args);
+    }
+
+    std::string canonical_base;
+    if (auto* sym = lookup_struct(ctx, base)) {
+        if (!sym->owning_module.empty()) {
+            canonical_base = support::join_namespace(sym->owning_module) +
+                             "::" + base;
+        }
+    }
+    if (canonical_base.empty()) return type;
+
+    return ctx.types.get_struct(canonical_base);
+}
+
 int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
     if (!t) return 0;
     switch (t->kind) {
@@ -102,8 +160,11 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
                 const auto* fields = ctx->types.get_struct_fields(t->struct_name);
                 if (fields) {
                     int total = 0;
-                    for (size_t i = 0; i < fields->size(); ++i) {
-                        total += 8;
+                    for (const auto& field : *fields) {
+                        const ast::Type* ft = field.second;
+                        total += (ft && ft->kind == ast::TypeKind::Struct)
+                            ? type_size(ft, ctx)
+                            : 8;
                     }
                     return total;
                 }
@@ -970,6 +1031,11 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                     }
                 }
             }
+            // The shared body may still say `Box<T>`; resolve it before layout.
+            if (current_type_subst) {
+                var_type = ctx.types.substitute_type(var_type, *current_type_subst);
+            }
+            var_type = canonicalize_ir_type(ctx, var_type);
             type_scopes.back()[node.name] = var_type;
             local_var_attrs[node.name] = node.attributes;
 
@@ -982,7 +1048,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                     emit(IRStoreLocal{local, ptr});
                 }
                 if (node.value) {
-                    const uint32_t value = gen_expr(*node.value);
+                    const uint32_t value = gen_expr_as(*node.value, var_type);
                     // Copy struct fields from result into local's allocated space
                     const uint32_t local_ptr = new_reg();
                     emit(IRLoadLocal{local_ptr, local});
@@ -1217,7 +1283,9 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             }
 
             ast::TypeKind tk = ast::TypeKind::I32;
-            if (node.condition->resolved_type) {
+            if (const ast::Type* cond_type = expr_static_type(*node.condition)) {
+                tk = cond_type->kind;
+            } else if (node.condition->resolved_type) {
                 tk = node.condition->resolved_type->kind;
             }
 
@@ -1371,6 +1439,211 @@ void IRGenerator::gen_region(const ast::RegionStmt& reg) {
     emit(IRRegionEnd{region_local});
 
     region_stack.pop_back();
+}
+
+const ast::Type* IRGenerator::expr_static_type(const ast::Expr& expr) {
+    return std::visit(overloaded{
+        [&](const ast::VarExpr& v) -> const ast::Type* {
+            for (int i = static_cast<int>(type_scopes.size()) - 1; i >= 0; --i) {
+                auto it = type_scopes[i].find(v.name);
+                if (it != type_scopes[i].end()) {
+                    return canonicalize_ir_type(ctx, it->second);
+                }
+            }
+            if (!current_method_struct_name.empty()) {
+                auto field = resolve_struct_field_by_name(
+                    ctx, current_method_struct_name, v.name);
+                if (field.second) {
+                    return canonicalize_ir_type(ctx, field.second);
+                }
+            }
+            auto* sym = ctx.symbols.lookup(v.name);
+            if (sym) {
+                return canonicalize_ir_type(ctx, symbol_type(*sym));
+            }
+            return nullptr;
+        },
+        [&](const ast::FieldExpr& f) -> const ast::Type* {
+            const ast::Type* base = expr_static_type(*f.base);
+            if (!base) return nullptr;
+            return canonicalize_ir_type(
+                ctx, resolve_struct_field(ctx, base, f.field).second);
+        },
+        [&](const ast::IndexExpr& ix) -> const ast::Type* {
+            const ast::Type* base = expr_static_type(*ix.base);
+            while (base && base->kind == ast::TypeKind::Reference &&
+                   base->pointed) {
+                base = base->pointed;
+            }
+            if (base && base->kind == ast::TypeKind::Pointer && base->pointed) {
+                return canonicalize_ir_type(ctx, base->pointed);
+            }
+            return nullptr;
+        },
+        [&](const ast::UnaryExpr& u) -> const ast::Type* {
+            if (u.op == ast::UnaryOp::AddrOf) {
+                const ast::Type* operand = expr_static_type(*u.operand);
+                return operand ? ctx.types.get_pointer(operand) : nullptr;
+            }
+            return expr.resolved_type;
+        },
+        [&](const ast::CastExpr& c) -> const ast::Type* {
+            const ast::Type* target = c.target;
+            if (target && current_type_subst) {
+                target = ctx.types.substitute_type(target, *current_type_subst);
+            }
+            return canonicalize_ir_type(ctx, target);
+        },
+        [&](const ast::CallExpr& c) -> const ast::Type* {
+            if (c.callee) {
+                if (const auto* mf = std::get_if<ast::FieldExpr>(&c.callee->kind)) {
+                    const ast::Type* base = expr_static_type(*mf->base);
+                    while (base &&
+                           (base->kind == ast::TypeKind::Reference ||
+                            base->kind == ast::TypeKind::Pointer) &&
+                           base->pointed) {
+                        base = base->pointed;
+                    }
+                    if (base && base->kind == ast::TypeKind::Struct) {
+                        std::vector<std::string> path =
+                            support::split_path(base->struct_name);
+                        path.back() = path.back() + "::" + mf->field;
+                        if (auto* sym = resolve_qualified(ctx, path)) {
+                            if (auto* fs =
+                                    std::get_if<symb_t::FuncSymbol>(&sym->data)) {
+                                return canonicalize_ir_type(ctx, fs->return_type);
+                            }
+                        }
+                    }
+                    // Not a free-function path; do not run flatten_path here.
+                    return expr.resolved_type;
+                }
+
+                // Type args may still be generic params, so rebuild the name.
+                std::string mangled;
+                if (!c.type_args.empty()) {
+                    std::vector<const ast::Type*> args;
+                    args.reserve(c.type_args.size());
+                    for (const ast::Type* arg : c.type_args) {
+                        const ast::Type* resolved = arg;
+                        if (current_type_subst) {
+                            resolved = ctx.types.substitute_type(
+                                resolved, *current_type_subst);
+                        }
+                        args.push_back(resolved);
+                    }
+                    mangled = ctx.types.mangle_func_name(
+                        support::join_namespace(support::flatten_path(c.callee)),
+                        args);
+                } else if (!c.resolved_mangled_name.empty()) {
+                    mangled = c.resolved_mangled_name;
+                }
+                if (!mangled.empty()) {
+                    auto it = ctx.generic_return_types.find(mangled);
+                    if (it != ctx.generic_return_types.end()) {
+                        return canonicalize_ir_type(ctx, it->second);
+                    }
+                }
+
+                if (auto* sym = resolve_qualified(
+                        ctx, support::flatten_path(c.callee))) {
+                    if (auto* fs = std::get_if<symb_t::FuncSymbol>(&sym->data)) {
+                        return canonicalize_ir_type(ctx, fs->return_type);
+                    }
+                }
+            }
+            return expr.resolved_type;
+        },
+        [&](const ast::SizeofExpr&) -> const ast::Type* {
+            return ctx.types.get_builtin(ast::TypeKind::U64);
+        },
+        [&](const ast::StructInitExpr& s) -> const ast::Type* {
+            const ast::Type* t = struct_init_type(s);
+            return t ? t : expr.resolved_type;
+        },
+        [&](const auto&) -> const ast::Type* {
+            return expr.resolved_type;
+        }
+    }, expr.kind);
+}
+
+const ast::Type* IRGenerator::struct_init_type(const ast::StructInitExpr& node) {
+    auto resolve_args = [&]() {
+        std::vector<const ast::Type*> args;
+        args.reserve(node.type_args.size());
+        for (const ast::Type* arg : node.type_args) {
+            const ast::Type* resolved = arg;
+            if (current_type_subst) {
+                resolved = ctx.types.substitute_type(resolved, *current_type_subst);
+            }
+            args.push_back(canonicalize_ir_type(ctx, resolved));
+        }
+        return args;
+    };
+
+    const ast::Type* struct_type = nullptr;
+    if (node.type_ref) {
+        if (const auto* var = std::get_if<ast::VarExpr>(&node.type_ref->kind)) {
+            if (!node.type_args.empty()) {
+                struct_type = ctx.types.get_generic_instantiation(
+                    var->name, resolve_args());
+            }
+            if (!struct_type) {
+                struct_type = ctx.types.get_struct(var->name);
+            }
+        } else if (const auto* ns = std::get_if<ast::NamespaceExpr>(&node.type_ref->kind)) {
+            auto expr = ast::Expr{*ns, node.type_ref->loc};
+            const std::string full_name =
+                support::join_namespace(support::flatten_path(&expr));
+            if (!node.type_args.empty()) {
+                struct_type = ctx.types.get_generic_instantiation(
+                    full_name, resolve_args());
+            }
+            if (!struct_type) {
+                struct_type = ctx.types.get_struct(full_name);
+            }
+        } else if (const auto* te = std::get_if<ast::TypeExpr>(&node.type_ref->kind)) {
+            struct_type = te->type;
+            if (struct_type && current_type_subst) {
+                struct_type = ctx.types.substitute_type(
+                    struct_type, *current_type_subst);
+            }
+        }
+    }
+
+    if (!struct_type || struct_type->kind != ast::TypeKind::Struct) {
+        return nullptr;
+    }
+
+    for (const ast::Type* arg : struct_type->type_args) {
+        if (arg && arg->kind == ast::TypeKind::Generic) {
+            return nullptr;
+        }
+    }
+
+    struct_type = canonicalize_ir_type(ctx, struct_type);
+    if (!struct_type || struct_type->kind != ast::TypeKind::Struct) {
+        return nullptr;
+    }
+
+    if (!lookup_struct(ctx, struct_type->struct_name) &&
+        !struct_type->type_args.empty()) {
+        if (ctx.types.try_instantiate(struct_type->struct_name,
+                                      struct_type->type_args)) {
+            const auto* fields =
+                ctx.types.get_struct_fields(struct_type->struct_name);
+            if (fields) {
+                const auto* field_attrs =
+                    ctx.types.get_struct_field_attrs(struct_type->struct_name);
+                ctx.symbols.declare_struct_global(
+                    struct_type->struct_name, *fields, {},
+                    field_attrs ? *field_attrs
+                                : std::vector<std::vector<ast::Attribute>>{});
+            }
+        }
+    }
+
+    return struct_type;
 }
 
 uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
@@ -1579,11 +1852,15 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::BinaryExpr& node) -> uint32_t {
-            auto operand_kind = [](const ast::Expr* expr, ast::TypeKind fallback) {
-                if (!expr || !expr->resolved_type) {
+            auto operand_kind = [&](const ast::Expr* expr, ast::TypeKind fallback) {
+                const ast::Type* type = expr ? expr_static_type(*expr) : nullptr;
+                if (!type && expr) {
+                    type = expr->resolved_type;
+                }
+                if (!type) {
                     return fallback;
                 }
-                const ast::TypeKind kind = expr->resolved_type->kind;
+                const ast::TypeKind kind = type->kind;
 
                 // Enums use i32 as their runtime representation.
                 return kind == ast::TypeKind::Enum ? ast::TypeKind::I32 : kind;
@@ -1620,8 +1897,6 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::UnaryExpr& node) -> uint32_t {
-            const ast::Type* op_type = node.operand ? node.operand->resolved_type : nullptr;
-
             // Address-of: &expr
             if (node.op == ast::UnaryOp::AddrOf) {
                 // Handle &var (local variable)
@@ -1677,8 +1952,13 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             emit(IRLoadConst{ zero, 0 });
 
             ast::TypeKind tk = ast::TypeKind::I32;
-            if (node.operand && node.operand->resolved_type) {
-                tk = node.operand->resolved_type->kind;
+            const ast::Type* operand_type =
+                node.operand ? expr_static_type(*node.operand) : nullptr;
+            if (!operand_type && node.operand) {
+                operand_type = node.operand->resolved_type;
+            }
+            if (operand_type) {
+                tk = operand_type->kind;
             }
 
             if (node.op == ast::UnaryOp::Neg) {
@@ -1774,27 +2054,8 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     }
                     return gen_expr(*field->base);
                 }();
-                const ast::Type* base_type = nullptr;
-
-                if (const auto* base_var = std::get_if<ast::VarExpr>(&field->base->kind)) {
-                    for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
-                        auto tit = type_scopes[i].find(base_var->name);
-                        if (tit != type_scopes[i].end()) {
-                            base_type = tit->second;
-                            break;
-                        }
-                    }
-
-                    if (!base_type) {
-                        auto* sym = ctx.symbols.lookup(base_var->name);
-                        if (sym) {
-                            base_type = symbol_type(*sym);
-                        }
-                    }
-                }
-
-                // Nested field access (e.g. a.b.c.d = x): the semantic pass
-                // already resolved the intermediate expression's type.
+                // Use the current instantiation type, not the one in the shared AST.
+                const ast::Type* base_type = expr_static_type(*field->base);
                 if (!base_type) {
                     base_type = field->base->resolved_type;
                 }
@@ -1826,7 +2087,10 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 const uint32_t base = gen_expr(*index->base);
                 const uint32_t idx = gen_expr(*index->index);
 
-                const ast::Type* base_type = index->base->resolved_type;
+                const ast::Type* base_type = expr_static_type(*index->base);
+                if (!base_type) {
+                    base_type = index->base->resolved_type;
+                }
                 // Auto-deref references
                 if (base_type && base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
                     base_type = base_type->pointed;
@@ -1865,27 +2129,8 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
         [&](const ast::FieldExpr& node) -> uint32_t {
             const uint32_t base = gen_expr(*node.base);
-            const ast::Type* base_type = nullptr;
-
-            if (const auto* base_var = std::get_if<ast::VarExpr>(&node.base->kind)) {
-                for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
-                    auto tit = type_scopes[i].find(base_var->name);
-                    if (tit != type_scopes[i].end()) {
-                        base_type = tit->second;
-                        break;
-                    }
-                }
-
-                if (!base_type) {
-                    auto* sym = ctx.symbols.lookup(base_var->name);
-                    if (sym) {
-                        base_type = symbol_type(*sym);
-                    }
-                }
-            }
-
-            // Nested field access (e.g. a.b.c): the semantic pass already
-            // resolved the intermediate expression's type.
+            // `resolved_type` can belong to another instantiation here.
+            const ast::Type* base_type = expr_static_type(*node.base);
             if (!base_type) {
                 base_type = node.base->resolved_type;
             }
@@ -2004,7 +2249,10 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             // Method call: <struct expr>.<method>(args).
             if (node.callee) {
                 if (const auto* mf = std::get_if<ast::FieldExpr>(&node.callee->kind)) {
-                    const ast::Type* base_type = mf->base ? mf->base->resolved_type : nullptr;
+                    const ast::Type* base_type = mf->base ? expr_static_type(*mf->base) : nullptr;
+                    if (!base_type && mf->base) {
+                        base_type = mf->base->resolved_type;
+                    }
                     if (base_type) {
                         if (base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
                             base_type = base_type->pointed;
@@ -2197,8 +2445,12 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             const uint32_t dst = new_reg();
 
             ast::TypeKind src_kind = ast::TypeKind::Void;
-            if (node.value->resolved_type) {
-                src_kind = node.value->resolved_type->kind;
+            const ast::Type* value_type = expr_static_type(*node.value);
+            if (!value_type) {
+                value_type = node.value->resolved_type;
+            }
+            if (value_type) {
+                src_kind = value_type->kind;
             }
 
             // A value cast to str is a number-to-string conversion: semantic
@@ -2222,7 +2474,17 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::StructInitExpr& node) -> uint32_t {
-            const ast::Type* struct_type = expr.resolved_type;
+            // Resolve raw type args (e.g. `T`) for this instantiation.
+            const bool implicit_init =
+                node.type_ref &&
+                std::holds_alternative<ast::TypeExpr>(node.type_ref->kind);
+            const ast::Type* struct_type =
+                (implicit_init && struct_init_expected)
+                    ? struct_init_expected
+                    : struct_init_type(node);
+            if (!struct_type) {
+                struct_type = expr.resolved_type;
+            }
             if (!struct_type || struct_type->kind != ast::TypeKind::Struct) {
                 ctx.errors.add("StructInitExpr: invalid or missing struct type"); return 0;
             }
@@ -2267,10 +2529,15 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::SizeofExpr& node) -> uint32_t {
-            if (node.type->kind == TypeKind::Struct && !node.type->type_args.empty()) {
-                ctx.types.try_instantiate(node.type->struct_name, node.type->type_args);
+            // `sizeof(T)` still holds the parameter in the shared body.
+            const ast::Type* type = node.type;
+            if (current_type_subst) {
+                type = ctx.types.substitute_type(type, *current_type_subst);
             }
-            int sz = ctx.types.type_size(node.type);
+            if (type->kind == TypeKind::Struct && !type->type_args.empty()) {
+                ctx.types.try_instantiate(type->struct_name, type->type_args);
+            }
+            int sz = ctx.types.type_size(type);
             if (sz <= 0) {
                 ctx.errors.add("sizeof: zero or unknown size"); return 0;
             }
@@ -2288,7 +2555,10 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             const uint32_t idx = gen_expr(*node.index);
             const uint32_t dst = new_reg();
 
-            const ast::Type* base_type = node.base->resolved_type;
+            const ast::Type* base_type = expr_static_type(*node.base);
+            if (!base_type) {
+                base_type = node.base->resolved_type;
+            }
             // Auto-deref references
             if (base_type && base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
                 base_type = base_type->pointed;
@@ -2318,7 +2588,10 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             const uint32_t rhs = gen_expr(*node.rhs);
             const uint32_t dst = new_reg();
 
-            const ast::Type* lhs_ty = node.lhs->resolved_type;
+            const ast::Type* lhs_ty = expr_static_type(*node.lhs);
+            if (!lhs_ty) {
+                lhs_ty = node.lhs->resolved_type;
+            }
             const bool is_signed_lhs = lhs_ty &&
                 (is_signed_int_kind(lhs_ty->kind) || lhs_ty->kind == ast::TypeKind::Enum);
             const bool is_ar = !node.is_left && is_signed_lhs;
@@ -2330,10 +2603,24 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 }
 
 Reg IRGenerator::gen_expr_as(const ast::Expr& expr, const ast::Type* target) {
+    const ast::Type* saved_expected = struct_init_expected;
+    if (target && target->kind == ast::TypeKind::Struct) {
+        if (const auto* si = std::get_if<ast::StructInitExpr>(&expr.kind)) {
+            if (si->type_ref &&
+                std::holds_alternative<ast::TypeExpr>(si->type_ref->kind)) {
+                struct_init_expected = target;
+            }
+        }
+    }
+
     const uint32_t v = gen_expr(expr);
+    struct_init_expected = saved_expected;
     if (!target) return v;
 
-    const ast::Type* src = expr.resolved_type;
+    const ast::Type* src = expr_static_type(expr);
+    if (!src) {
+        src = expr.resolved_type;
+    }
     if (!src || src->kind == target->kind) return v;
 
     const bool src_num = is_numeric_kind(src->kind);

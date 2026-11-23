@@ -1,0 +1,105 @@
+// Regression: a generic struct with a struct field must use the concrete
+// instantiation layout and copy the value, not a pointer. Covers nested
+// fields, literals, methods, call results and sizeof(T).
+
+struct Point {
+    mut i32 x;
+    mut i32 y;
+};
+
+struct Box<T> {
+    mut T v;
+};
+
+struct Holder<T> {
+    mut T v;
+
+    T get() { return v; }
+};
+
+struct Inner<T> {
+    mut T v;
+};
+
+struct Outer<T> {
+    mut Inner<T> i;
+};
+
+Box<T> wrap<T>(T val) {
+    @init mut Box<T> b;
+    b.v = val;
+    return b;
+}
+
+Box<T> make_explicit<T>(T val) {
+    return Box<T>{val};
+}
+
+Box<T> make_implicit<T>(T val) {
+    Box<T> b = {val};
+    return b;
+}
+
+T get_inner<T>(Outer<T> o) {
+    return o.i.v;
+}
+
+T get_from_call<T>(T val) {
+    return wrap<T>(val).v;
+}
+
+u64 size_of<T>() {
+    return sizeof(T) as u64;
+}
+
+@entry i32 main() {
+    Box<i32> bi = wrap<i32>(7);
+    if (bi.v != 7) { return 1; }
+
+    Box<Point> bp = wrap<Point>(Point{30, 40});
+    if (bp.v.x != 30 || bp.v.y != 40) { return 2; }
+
+    Box<Point> ep = make_explicit<Point>(Point{1, 2});
+    if (ep.v.x != 1 || ep.v.y != 2) { return 3; }
+
+    Box<i32> ei = make_explicit<i32>(8);
+    if (ei.v != 8) { return 4; }
+
+    Box<Point> ip = make_implicit<Point>(Point{3, 4});
+    if (ip.v.x != 3 || ip.v.y != 4) { return 5; }
+
+    Box<i32> ii = make_implicit<i32>(9);
+    if (ii.v != 9) { return 6; }
+
+    @init mut Outer<i32> oi;
+    oi.i.v = 5;
+    if (get_inner<i32>(oi) != 5) { return 7; }
+
+    @init mut Outer<Point> op;
+    op.i.v = Point{10, 20};
+    Point np = get_inner<Point>(op);
+    if (np.x != 10 || np.y != 20) { return 8; }
+
+    Box<Box<Point>> bb = wrap<Box<Point>>(wrap<Point>(Point{50, 60}));
+    if (bb.v.v.x != 50 || bb.v.v.y != 60) { return 9; }
+
+    @init mut Holder<i32> hi;
+    hi.v = 11;
+    if (hi.get() != 11) { return 10; }
+
+    @init mut Holder<Point> hp;
+    hp.v = Point{70, 80};
+    Point got = hp.get();
+    if (got.x != 70 || got.y != 80) { return 11; }
+
+    if (get_from_call<i32>(12) != 12) { return 12; }
+
+    Point cp = get_from_call<Point>(Point{90, 100});
+    if (cp.x != 90 || cp.y != 100) { return 13; }
+
+    // sizeof(T) must use the current instantiation.
+    if (size_of<i32>() != 4) { return 14; }
+    if (size_of<Point>() != 16) { return 15; }
+
+    return 0;
+}
