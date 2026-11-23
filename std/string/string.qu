@@ -194,11 +194,10 @@ string string_empty() {
     return s;
 }
 
-// makestr - copy `src` into a fresh heap allocation.
+// makestr_len - copy `src` (only n first bytes) into a fresh heap allocation.
 // Returns an empty string when the allocation fails.
-string makestr(str src) {
+string makestr_len(str src, u64 n) {
     mut string s = string_empty();
-    u64 n = str_len(src);
     if (!s.reserve(n))
         return s;
     for (mut u64 i = 0; i < n; i++)
@@ -206,4 +205,11 @@ string makestr(str src) {
     s.len = n;
     s.data[n] = 0;
     return s;
+}
+
+// makestr - copy `src` into a fresh heap allocation.
+// Returns an empty string when the allocation fails.
+string makestr(str src) {
+    u64 n = str_len(src);
+    return makestr_len(src, n);
 }

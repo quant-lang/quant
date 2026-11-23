@@ -20,6 +20,9 @@
 
 module "std::io";
 
+load "std::heap";
+load "std::string";
+
 // Linux syscall numbers:
 //   read = 0, write = 1, close = 3, lseek = 8, exit = 60,
 //   fsync = 74, openat = 257 (AT_FDCWD = -100)
@@ -31,6 +34,20 @@ module "std::io";
 @syscall(60) extern void sys_exit(i64 code);
 @syscall(74) extern i64 sys_fsync(i64 fd);
 @syscall(257) extern i64 sys_openat(i64 dirfd, str path, i64 flags, i64 mode);
+
+dynamic {
+    mut str input_buf;
+
+    @onbegin
+    void onbegin() {
+        input_buf = std::heap::heap_malloc(4096) as! str;
+    }
+
+    @onend
+    void onend() {
+        std::heap::heap_free(input_buf as! *void);
+    }
+}
 
 // strlen - number of bytes in a NUL-terminated string, without the \0.
 i64 strlen(str s) {
@@ -126,6 +143,14 @@ i64 read(str buf, i64 len) {
     i64 r = sys_read(0, buf, len);
     if (r < 0) { return -r; }
     return r;
+}
+
+// readln - read up to 4096 bytes from stdin, strip the trailing '\n', and return an std::string::string.
+std::string::string readln() {
+    mut u64 r = read(input_buf, 4096) as u64;
+    if (input_buf[r - 1] == '\n')
+        r -= 1;
+    return std::string::makestr_len(input_buf, r);
 }
 
 // read_char - read a single byte from stdin, or -1 at end of input.
