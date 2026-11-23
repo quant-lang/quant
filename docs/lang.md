@@ -664,6 +664,8 @@ Supported attributes:
 | `@syscall` | function (extern only)               | 1    | Lower function to raw syscall `N` (remapped per target) |
 | `@export`  | function                             | 1    | Use `name` as the function symbol in the object file    |
 | `@import`  | function (extern only)               | 1-2  | Import a function from a Windows DLL                    |
+| `@onbegin` | function (inside `dynamic`)          | 0    | Called in the entry main at its start (see `dynamic`)   |
+| `@onend`   | function (inside `dynamic`)          | 0    | Called in the entry main before the trailing return (see `dynamic`) |
 
 ### `@entry`
 
@@ -885,13 +887,84 @@ On Linux, use `@syscall` instead.
 ```qu
 @import extern i64 bad();          // error: @import requires a DLL name
 extern i64 also_bad();             // error: @import requires extern
+``` 
+### `@onbegin`
+
+Marks a function inside `dynamic { }` to run when the program starts. Its call is inserted at the beginning of the entry function, in declaration order.
+
+```qu
+
+dynamic {
+
+    mut i32 counter = 0;
+
+    @onbegin void init_counter() {
+        counter = 42;
+    }
+}
+```
+
+### `@onend`
+
+Marks a function inside `dynamic { }` to run when the program finishes. Its call is inserted before the entry function's final `return`, or at the end if there is no trailing return. Multiple dynamics run in reverse declaration order.
+
+```qu
+
+dynamic {
+
+    mut i32 counter = 0;
+
+    @onend void done_counter() {
+
+        counter = counter + 1;
+
+    }
+
+}
+
+```
+
+## `dynamic`
+
+`dynamic { ... }` is a construct that declares global buffers and has construct and destruct functions. In dynamic constructions you can declare global variables (they become program globals), and the construct's functions are collected like regular functions.
+
+A dynamic must be placed at the top level of a module. Dynamics inside other dynamics, inside namespaces or inside functions are compile errors.
+
+Each dynamic must contain one `@onbegin` and one `@onend` function. Missing functions or multiple functions are compile errors.
+
+The entry function is the one marked with `@entry`, or named `main` if no `@entry` is present. Dynamic calls are inserted after semantic analysis: `@onbegin` calls are inserted at the start of the entry function, and `@onend` calls are inserted before the entry function's final `return` (or at the end of its body); multiple dynamics run in reverse declaration order. If a module has no entry function, the dynamics are metadata only - no calls are inserted.
+
+Mutable global variables outside `dynamic` constructs are compile errors - the only way to declare mutable globals is via `dynamic`.
+
+Example:
+
+```qu
+load "std::io";
+using std::io;
+
+dynamic {
+    mut i32 counter = 0;
+
+    @onbegin void init_counter() {
+        counter = 42;
+    }
+
+    @onend void done_counter() {
+        counter++;
+    }
+}
+
+@entry i32 main() {
+    println(counter as str); // prints 42
+    return 0;
+}
 ```
 
 ---
 
 ## Regions & Pointers. Arrays
 
-Quant has region memory system. Pointers can only be declared in ```region{}```. If a region dies, all pointers are destroyed.
+Quant has region memory system. Pointers can be declared in ```region{}```. If a region dies, all pointers are destroyed.
 
 ```qu
 region r {

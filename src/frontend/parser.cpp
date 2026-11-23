@@ -455,6 +455,9 @@ ast::Stmt Parser::parse_statement() {
         decl.attributes = std::move(attrs);
         return make_stmt(std::move(decl));
     }
+    if (match(TOKEN_DYNAMIC)){
+        return make_stmt(ast::DynamicStmt{parse_dynamic_stmt()});
+    }
 
     switch (declaration_kind()) {
         case DeclKind::Func: {
@@ -946,6 +949,9 @@ ast::EnumDecl Parser::parse_enum_decl() {
     match(TOKEN_SEMICOLON);
 
     return ret;
+}
+ast::DynamicStmt Parser::parse_dynamic_stmt(){
+    return ast::DynamicStmt{parse_block()};
 }
 std::vector<ast::FuncArg> Parser::parse_func_args(const std::vector<std::string>* type_params) {
     std::vector<ast::FuncArg> args;

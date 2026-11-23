@@ -70,6 +70,7 @@ namespace quant::ps {
                                      const std::vector<std::string>* outer_type_params = nullptr);
             ast::RegionStmt parse_region();
             ast::EnumDecl parse_enum_decl();
+            ast::DynamicStmt parse_dynamic_stmt();
             std::vector<ast::FuncArg> parse_func_args(const std::vector<std::string>* type_params = nullptr);
 
             // expressions(Pratt)

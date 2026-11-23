@@ -1,0 +1,11 @@
+load "std::io";
+using std::io;
+
+dynamic {
+    mut i32 buf = 0;
+    @onbegin void ob1() {  }
+}
+
+@entry i32 main() {
+    return 0;
+}

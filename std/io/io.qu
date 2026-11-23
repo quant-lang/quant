@@ -60,7 +60,12 @@ void eprint(str text) {
 // ByteBuf - single-byte buffer for the read/write syscalls.
 // `&` needs a non-scalar, so a bare `char` variable cannot be passed to them.
 struct ByteBuf { char c; };
-@init mut ByteBuf g_byte_buf;
+dynamic {
+    @init mut ByteBuf g_byte_buf;
+
+    @onbegin void io_dyn_on_begin() {}
+    @onend   void io_dyn_on_end()   {}
+}
 
 // print_char - print a single byte to stdout.
 void print_char(char c) {

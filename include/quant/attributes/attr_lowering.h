@@ -5,6 +5,7 @@
 
 #include "quant/frontend/ast.h"
 #include "quant/support/compiler_context.h"
+#include "quant/modules/module.h"
 
 namespace quant::attrs {
 
@@ -33,5 +34,9 @@ private:
     static bool has_init_attr(const std::vector<ast::Attribute>& attrs);
     static void remove_init_attr(std::vector<ast::Attribute>& attrs);
 };
+
+// Insert @onbegin calls at the start of main and @onend calls in reverse
+// order before the final return or at the end. Runs after semantic analysis.
+void lower_dynamics(CompilerContext& ctx, modules::Module& mod);
 
 } // namespace quant::attrs

@@ -28,8 +28,13 @@ struct Buf64 {
     u64 f7;
 };
 
-@init mut Buf32 g_buf32;
-@init mut Buf64 g_buf64;
+dynamic {
+    @init mut Buf32 g_buf32;
+    @init mut Buf64 g_buf64;
+
+    @onbegin void format_dyn_on_begin() {}
+    @onend   void format_dyn_on_end()   {}
+}
 
 // Copy a NUL-terminated buffer into a fresh heap allocation and return it
 // as a string. Falls back to the scratch buffer if allocation fails.

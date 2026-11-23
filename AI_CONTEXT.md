@@ -422,6 +422,8 @@ Syntax: `@name` or `@name(args)` before a declaration.
 | `@syscall` | function (extern only)               | 1    | Lower to a raw syscall N (remapped per target) |
 | `@export`  | function                             | 1    | Fixed symbol name in object file               |
 | `@import`  | function (extern only)               | 1-2  | Import from Windows DLL                        |
+| `@onbegin` | function (inside `dynamic`)          | 0    | Called in the entry main at its start          |
+| `@onend`   | function (inside `dynamic`)          | 0    | Called in the entry main before the trailing return |
 
 ### @guard
 
@@ -434,6 +436,47 @@ work(value);              // checked at compile time
 ```
 
 If the condition evaluates to `false`, compilation fails with "guard failed".
+
+### dynamic
+
+`dynamic { ... }` — meta-data/syntax-sugar construct (full description in
+docs/lang.md, "## dynamic"): global buffers declared in the body + functions
+marked `@onbegin` (constructor) and `@onend` (destructor).
+
+Semantics:
+- Placement: `analyze_dynamic_stmt` requires module top level: nested
+  dynamics (`dynamic_depth > 0`) and dynamics in namespaces or functions
+  (`namespace_depth > 0` / `current_function_return_type != nullptr`) are
+  compile errors. `namespace_depth` is tracked in `analyze_namespace_stmt`.
+- Mut rule: `analyze_var_decl` reports "Mutable variables are not allowed
+  outside dynamic constructs" for `is_mut` vars with `dynamic_depth == 0`
+  and `current_function_return_type == nullptr`; `dynamic_depth` is
+  incremented around the dynamic body in `analyze_dynamic_stmt`. (Converted
+  the std and test files that used `@init mut` module globals into dynamics:
+  std/format, std/heap, std/io, std/superos/io, std/win/heap, std/win/io,
+  tests/rodata_test, tests/lib_priv_var, tests/opt_edge_cases.)
+- Pass `quant::attrs::lower_dynamics(ctx, mod)` runs after sema, before IRGen
+  (main.cpp: right after `sem.analyze()`). It collects dynamics, finds the
+  entry main (`@entry` attr or a function named `main`, mirroring the
+  backend's `find_entry`) — if there is no entry main, it returns silently
+  (metadata only for library modules) — inserts `@onbegin` calls at the start
+  of the body in dynamic declaration order, and `@onend` calls in reverse
+  order before the trailing `return` (or at the end of the body).
+- `SemanticAnalyzer::analyze_dynamic_stmt` analyzes the body: buffer
+  `VarDecl`s are analyzed as module-level declarations; `FuncStmt`s are
+  analyzed via `analyze_func` and matched against `@onbegin`/`@onend`
+  attributes (stored in `DynamicStmt::on_begin_func`/`on_end_func`). A dynamic
+  without either function is a compile error; duplicate marks are errors.
+  Functions inside dynamic bodies are also registered as module symbols
+  (`collect_declarations`).
+- IRGen support: `DynamicStmt` visitors added to `collect_functions_in_stmts`
+  (registers onbegin/onend functions), `collect_globals_in_stmts` (buffer vars
+  become program globals), `gen_stmt` (no-op; the funcs are generated through
+  `gen_function`), and `is_declaration_stmt`.
+- `AttrEvaluator::visit_stmt` also visits `dynamic` bodies (for `@init`
+  lowering consistency).
+- Attributes `@onbegin`/`@onend` are registered in
+  include/quant/attributes/attributes.h.
 
 ---
 

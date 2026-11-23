@@ -48,6 +48,7 @@ namespace quant{
         TOKEN_TRUE,
         TOKEN_FALSE,
         TOKEN_NULLPTR,
+        TOKEN_DYNAMIC, // new meta-data construction
 
         // types
         TOKEN_VOID,
