@@ -197,7 +197,7 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 * [ ] Add a way to initialize an empty struct, for example `A a = A{};`.
 * [x] Make the trailing `;` optional after `struct` and `enum` (accept both forms).
 * [x] Fix the docs: a non-void function needs a return on **every** path, not "at least one return".
-* [ ] Fix the docs: enum variants are now scoped (`Enum::Variant`); bare names are an error. Update `docs/lang.md` and `AI_CONTEXT.md`.
+* [x] Fix the docs: enum variants are now scoped (`Enum::Variant`); bare names are an error. Update `docs/lang.md` and `AI_CONTEXT.md`.
 
 ### P3 - Long-term features
 

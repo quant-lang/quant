@@ -54,7 +54,7 @@ Integer literals default to `i32` (or `u64` when the value exceeds `INT64_MAX`);
 
 ### Enums
 
-C-style enums with `i32` values starting at 0. Variants are accessible by bare name or qualified (`Color::Green`). Enums are compile-time only - they produce no IR.
+C-style enums with `i32` values starting at 0. Variants are scoped: use `Color::Green`; a bare variant name is an error. Enums are compile-time only - they produce no IR.
 
 ---
 
@@ -872,11 +872,11 @@ enum Color {
 };
 
 i32 main() {
-    mut i32 c = Red;
+    mut i32 c = Color::Red;
     switch (c) {
-        case Red: { return 1; }
-        case Green: { return 2; }
-        case Blue: { return 3; }
+        case Color::Red: { return 1; }
+        case Color::Green: { return 2; }
+        case Color::Blue: { return 3; }
         default: { return 0; }
     }
 }

@@ -518,12 +518,14 @@ enum Color {
 };
 ```
 
-Variants can be accessed directly by name or qualified:
+Variants are scoped to their enum and must be qualified:
 
 ```qu
-i32 x = Red;          // 0
+i32 x = Color::Red;   // 0
 i32 y = Color::Green; // 1
 ```
+
+A bare variant name such as `Red` is a compile error.
 
 Enums support attributes like `@public` and `@private`:
 
