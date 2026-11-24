@@ -19,10 +19,6 @@ struct Diagnostic {
     int length = 0;
     std::string message;
     bool parse = false;
-
-    std::string lexeme() const {
-        return file + ":" + std::to_string(line) + ":" + std::to_string(column);
-    }
 };
 
 class ErrorBag {

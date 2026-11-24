@@ -123,10 +123,13 @@ int main(int argc, char** argv) {
         if (i != 0)
             std::cout << ",\n";
 
-        std::cout << "    {\n" << "      \"lexeme\": ";
-        write_json_string(std::cout, diagnostic.lexeme());
+        std::cout << "    {\n" << "      \"file\": ";
+        write_json_string(std::cout, diagnostic.file);
 
-        std::cout << ",\n" << "      \"message\": ";
+        std::cout << ",\n" << "      \"line\": " << diagnostic.line
+                  << ",\n" << "      \"column\": " << diagnostic.column
+                  << ",\n" << "      \"length\": " << diagnostic.length
+                  << ",\n" << "      \"message\": ";
         write_json_string(std::cout, diagnostic.message);
 
         std::cout << "\n    }";
