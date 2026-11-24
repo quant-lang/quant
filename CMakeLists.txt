@@ -196,6 +196,7 @@ add_library(libquant
     src/support/symbol_path.cpp
     src/comptime/evaluator.cpp
     src/attributes/attr_lowering.cpp
+    src/driver/pipeline.cpp
 )
 add_dependencies(libquant quant_std_embed)
 
@@ -294,8 +295,8 @@ if(QUANT_USE_LIBQU)
   add_custom_target(quant_libqu
       DEPENDS ${QUANT_LIBQU_ARCHIVES} "${QUANT_LIBQU_EMBED_HEADER}")
 
-  add_dependencies(qu quant_libqu)
-  target_compile_definitions(qu PRIVATE QUANT_USE_LIBQU=1)
+  add_dependencies(libquant quant_libqu)
+  target_compile_definitions(libquant PRIVATE QUANT_USE_LIBQU=1)
 endif()
 
 if(QUANT_ENABLE_BENCH)
@@ -314,6 +315,8 @@ install(TARGETS qu
 if(QUANT_USE_LIBQU)
   install(FILES ${QUANT_LIBQU_ARCHIVES} DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
+
+add_subdirectory(lsp)
 
 if(QUANT_ENABLE_TESTS)
   enable_testing()

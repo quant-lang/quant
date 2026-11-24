@@ -169,7 +169,7 @@ OS ABI is a small, self-contained change. See
 
 * [ ] Constructors and destructors in structs (like dynamics with @onbegin @onend)
 * [ ] Conditional operator (`cond ? a : b`). It fits the explicit style
-* [ ] LSP
+* [x] LSP
 * [ ] Normal per-file compilation with per-file IR and standard linking.
 * [ ] Build system (like cmake, optional)
 * [ ] refactor semantic.cpp and ir.cpp

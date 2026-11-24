@@ -10,10 +10,27 @@ struct SourceFile {
     std::vector<std::string> lines;
 };
 
+// Structured diagnostic. Tools like qud render these as JSON instead of the
+// human-readable `file:line:col: error: ...` output used by the compiler.
+struct Diagnostic {
+    std::string file = "<unknown>";
+    int line = 0;
+    int column = 0;
+    int length = 0;
+    std::string message;
+    bool parse = false;
+
+    std::string lexeme() const {
+        return file + ":" + std::to_string(line) + ":" + std::to_string(column);
+    }
+};
+
 class ErrorBag {
     std::unordered_map<std::string, SourceFile> sources;
+    std::vector<Diagnostic> diagnostics;
     size_t error_count = 0;
     size_t parse_error_count = 0;
+    bool quiet = false;
 
     // Location used by legacy `add(message)` call sites that do not pass a
     // node explicitly. Semantic analysis and IR generation set this while
@@ -23,7 +40,7 @@ class ErrorBag {
 
     void print_carets(const SourceLocation& loc, int length, const std::string& line);
     void print(const SourceLocation& loc, int length, const std::string& msg);
-    void emit(const SourceLocation& loc, int length, const std::string& msg);
+    void emit(const SourceLocation& loc, int length, const std::string& msg, bool parse = false);
 
 public:
     class ParserException : public std::exception {};
@@ -42,6 +59,12 @@ public:
 
     void set_fallback_location(const SourceLocation& loc) { fallback_loc = loc; }
     const SourceLocation& fallback_location() const { return fallback_loc; }
+
+    // Suppress stderr output while still recording diagnostics. Use this for
+    // machine-readable tools that render diagnostics themselves.
+    void set_quiet(bool value) { quiet = value; }
+    bool is_quiet() const { return quiet; }
+    const std::vector<Diagnostic>& all() const { return diagnostics; }
 
     bool has_errors() const { return error_count > 0; }
     size_t count() const { return error_count; }

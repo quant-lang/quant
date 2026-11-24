@@ -55,6 +55,7 @@ void ErrorBag::print_carets(const SourceLocation& loc, int length, const std::st
 
 void ErrorBag::print(const SourceLocation& loc, int length, const std::string& msg) {
     error_count++;
+    if (quiet) return;
 
     set_color(RED);
     fprintf(stderr, "%s:%d:%d: error: %s\n",
@@ -68,19 +69,32 @@ void ErrorBag::print(const SourceLocation& loc, int length, const std::string& m
     }
 }
 
-void ErrorBag::emit(const SourceLocation& loc, int length, const std::string& msg) {
-    if (valid_location(loc)) {
-        print(loc, length, msg);
-        return;
+void ErrorBag::emit(const SourceLocation& loc, int length, const std::string& msg, bool parse) {
+    SourceLocation out = loc;
+    int out_length = length;
+    if (!valid_location(out) && valid_location(fallback_loc)) {
+        out = fallback_loc;
+        out_length = fallback_loc.length;
     }
-    if (valid_location(fallback_loc)) {
-        print(fallback_loc, fallback_loc.length, msg);
+
+    Diagnostic diag;
+    diag.file = out.file;
+    diag.line = out.line;
+    diag.column = out.column;
+    diag.length = out_length;
+    diag.message = msg;
+    diag.parse = parse;
+    diagnostics.push_back(std::move(diag));
+
+    if (valid_location(out)) {
+        print(out, out_length, msg);
         return;
     }
 
     // Malformed source location: report the message without a snippet rather
     // than fabricating a `<unknown>:0:0` position.
     error_count++;
+    if (quiet) return;
     set_color(RED);
     fprintf(stderr, "error: %s\n", msg.c_str());
     reset_color();
@@ -100,7 +114,7 @@ void ErrorBag::add(const std::string& msg) {
 
 void ErrorBag::add_parse(const SourceLocation& loc, int length, const std::string& msg) {
     ++parse_error_count;
-    emit(loc, length, msg);
+    emit(loc, length, msg, true);
 }
 
 void ErrorBag::add_parse(const SourceLocation& loc, const std::string& msg) {

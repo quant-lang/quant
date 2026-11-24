@@ -104,6 +104,17 @@ Module* ModuleManager::load_module(const fs::path& path) {
     return build_module(file_key, canon.string(), source, canon);
 }
 
+Module* ModuleManager::load_source(const std::string& name, const std::string& source, const fs::path& disk_path) {
+    std::string file_key = name;
+    if (auto it = loaded_files.find(file_key); it != loaded_files.end()) {
+        return it->second;
+    }
+    if (!disk_path.empty()) {
+        entry_dir = fs::weakly_canonical(disk_path).parent_path();
+    }
+    return build_module(file_key, name, source, disk_path);
+}
+
 Module* ModuleManager::load_embedded(const std::string& imp) {
     return load_embedded_module(imp);
 }

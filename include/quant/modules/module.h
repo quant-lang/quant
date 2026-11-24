@@ -43,6 +43,11 @@ public:
     Module* load_entry(const fs::path& path);
     Module* load_module(const fs::path& path);
 
+    // Load module source from memory. Used by tooling (qud/lsp) that receives
+    // the current buffer via stdin instead of a file on disk.
+    Module* load_source(const std::string& name, const std::string& source,
+                        const fs::path& disk_path = {});
+
     // Load a std:: module from the stdlib embedded into the binary.
     // Returns nullptr if the module is not found in the embedded table.
     Module* load_embedded(const std::string& imp);
