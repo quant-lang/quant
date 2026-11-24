@@ -1,11 +1,16 @@
 load "std::io";
 
 i32 main() {
-    // GENERIC_WRITE = 1073741824, CREATE_ALWAYS = 2
-    mut i64 fd = std::io::open("test_output.txt", 1073741824, 2);
+    // "r"  - open existing file for reading
+    // "w"  - open for writing, create or truncate the file
+    // "a"  - open for appending, create if it does not exist
+    // "r+" - open existing file for reading and writing
+    // "w+" - open for reading and writing, create or truncate the file
+    // "a+" - open for reading and appending, create if it does not exist
+    mut i64 fd = std::io::open("test_output.txt", "w");
 
-    if (fd < 0 as i64) {
-        std::io::print("open failed\n");
+    if (fd < 0) {
+        std::io::println("open failed");
         return 1;
     }
 
@@ -13,7 +18,7 @@ i32 main() {
     std::io::print(fd as str);
     std::io::print_char('\n');
 
-    mut i64 written = std::io::write(fd, "Hello from Quant!\n", 18 as i64);
+    mut i64 written = std::io::write(fd, "Hello from Quant!\n", 18);
 
     std::io::print("wrote ");
     std::io::print(written as str);
@@ -21,6 +26,6 @@ i32 main() {
 
     std::io::close(fd);
 
-    std::io::print("done\n");
+    std::io::println("done");
     return 0;
 }
