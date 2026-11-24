@@ -441,6 +441,18 @@ i32 main() {
     Point p = { 10, 20 };
     return p.x + p.y;
 }
+````
+An empty initializer zero-initializes all fields, including nested structs. Struct field defaults are ignored:
+
+```qu
+Point zero = Point{};
+Point same = {};
+````
+
+`T{}` is the only initializer that allows the argument count to differ from the number of fields. Empty structs are allowed and occupy one 8-byte slot:
+
+```
+E e = E{};
 ```
 
 Fields can be mutable:

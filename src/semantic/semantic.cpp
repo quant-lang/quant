@@ -3379,30 +3379,34 @@ const ast::Type* SemanticAnalyzer::analyze_struct_init(const ast::StructInitExpr
         return nullptr;
     }
 
-    // Validate argument count
-    if (node.args.size() != ss->field_names.size()) {
-        ctx.errors.add(node.type_ref->loc,
-            "Struct init argument count mismatch for " + struct_type->struct_name +
-            ": expected " + std::to_string(ss->field_names.size()) +
-            ", got " + std::to_string(node.args.size()));
-        return nullptr;
-    }
+    // `T{}` zero-initializes all fields and ignores struct field defaults.
+    // It is also exempt from the exact positional argument count rule.
+    if (!node.args.empty()) {
+        if (node.args.size() != ss->field_names.size()) {
+            ctx.errors.add(node.type_ref->loc,
+                "Struct init argument count mismatch for " + struct_type->struct_name +
+                ": expected " + std::to_string(ss->field_names.size()) +
+                ", got " + std::to_string(node.args.size()));
+            return nullptr;
+        }
 
-    // Validate argument types
-    for (size_t i = 0; i < node.args.size(); ++i) {
-        const ast::Type* arg_type = analyze_expr(node.args[i]);
-        if (!arg_type) return nullptr;
+        // Validate argument types
+        for (size_t i = 0; i < node.args.size(); ++i) {
+            const ast::Type* arg_type = analyze_expr(node.args[i]);
+            if (!arg_type)
+                return nullptr;
 
-        AssignCheck chk = check_assignable_value(ctx, ss->field_types[i], node.args[i]);
-        const std::string context = "struct init field '" + ss->field_names[i] + "'";
-        if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
-        if (chk == AssignCheck::LiteralOutOfRange)
-            ctx.errors.add(node.args[i]->loc,
-                literal_range_error(context, ctx, ss->field_types[i], arg_type));
-        else if (chk != AssignCheck::Ok)
-            ctx.errors.add(node.args[i]->loc,
-                type_mismatch_error(context, ctx, ss->field_types[i], arg_type));
-        if (chk != AssignCheck::Ok) return nullptr;
+            AssignCheck chk = check_assignable_value(ctx, ss->field_types[i], node.args[i]);
+            const std::string context = "struct init field '" + ss->field_names[i] + "'";
+            if (chk == AssignCheck::NullPtrToReference)
+                return nullptr; // already reported
+            if (chk == AssignCheck::LiteralOutOfRange)
+                ctx.errors.add(node.args[i]->loc,literal_range_error(context, ctx, ss->field_types[i], arg_type));
+            else if (chk != AssignCheck::Ok)
+                ctx.errors.add(node.args[i]->loc, type_mismatch_error(context, ctx, ss->field_types[i], arg_type));
+            if (chk != AssignCheck::Ok)
+                return nullptr;
+        }
     }
 
     return canonicalize_struct_type(struct_type);

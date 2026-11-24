@@ -194,7 +194,7 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 * [x] Unify std type names. Today `string`, `option`, and `slice` use snake_case, while `Vec` uses PascalCase. Pick one rule and update the std, tests and docs.
 * [x] Add a high-level `read_line` that stores the result in an owning `string` and removes the trailing `\n`. Allocation and freeing must stay explicit.
 * [ ] Improve struct literal inference from context, for example in call arguments and return values. Do not add general type inference.
-* [ ] Add a way to initialize an empty struct, for example `A a = A{};`.
+* [x] Add a way to initialize an empty struct, for example `A a = A{};`.
 * [x] Make the trailing `;` optional after `struct` and `enum` (accept both forms).
 * [x] Fix the docs: a non-void function needs a return on **every** path, not "at least one return".
 * [x] Fix the docs: enum variants are now scoped (`Enum::Variant`); bare names are an error. Update `docs/lang.md` and `AI_CONTEXT.md`.

@@ -326,7 +326,8 @@ namespace {
                             total += 8;
                         }
                     }
-                    return total;
+                    // Match IR layout: an empty struct occupies one qword slot.
+                    return total > 0 ? total : 8;
                 }
                 return 0;
             }

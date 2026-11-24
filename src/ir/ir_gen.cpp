@@ -166,7 +166,10 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
                             ? type_size(ft, ctx)
                             : 8;
                     }
-                    return total;
+                    // Empty structs still need an addressable slot so `&e`
+                    // and by-value passing have a valid object. Keep it at
+                    // one qword like every other field slot.
+                    return total > 0 ? total : 8;
                 }
                 return 0;
             }
@@ -181,7 +184,10 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
                     total += 8;  // each scalar field occupies an 8-byte qword
                 }
             }
-            return total;
+            // Empty structs still need an addressable slot so `&e`
+            // and by-value passing have a valid object. Keep it at
+            // one qword like every other field slot.
+            return total > 0 ? total : 8;
         }
         default: return 0;
     }
@@ -2535,6 +2541,17 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             if (current_func) current_func->extra_stack += sz;
             const uint32_t ptr = new_reg();
             emit(IRAlloca{ ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
+
+            // `T{}` zero-initializes all fields, including nested structs.
+            // Each flattened 8-byte slot is initialized with zero.
+            if (node.args.empty()) {
+                const uint32_t zero = new_reg();
+                emit(IRLoadConst{ zero, 0 });
+                for (uint32_t off : struct_flat_offsets(struct_type, ctx)) {
+                    emit(IRSetField{ ptr, zero, off });
+                }
+                return ptr;
+            }
 
             // Initialize each field by position
             auto* sym = lookup_struct(ctx, struct_type->struct_name);

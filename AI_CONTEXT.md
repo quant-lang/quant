@@ -294,12 +294,21 @@ struct Point {
 ```
 Point p = {10, 20};        // positional field init
 Point q = Point{30, 40};   // explicit type syntax
+Point z = Point{};         // empty init: every field is zeroed
+Point z2 = {};             // same, type comes from the declaration
 ```
 
-- Argument count must match field count exactly.
+- Argument count must match field count exactly, except that `T{}` is allowed
+  for any struct and means "set every field to its zero value".
 - Each argument type must match the field type.
 - No named initialization syntax.
-- No default field values in struct init expression (but fields can have defaults in declaration).
+- `T{}` does **not** run field defaults; it writes literal zeros (`0`, `false`,
+  `nullptr`, `0.0`) to every leaf field, including nested structs. Field
+  defaults only apply to declarations without an initializer.
+- No default field values in a non-empty struct init expression (but fields can
+  have defaults in declaration).
+- An empty struct (`struct E {};`) is a valid type and occupies one qword slot
+  so it can be addressed; `E e = E{};` is a no-op for its (absent) fields.
 
 ### Field defaults
 
@@ -686,7 +695,7 @@ user stack top is `0x600000`.
 
 ## 16. Compiler Invariants
 
-1. **Struct fields are always 8 bytes.** This is hardcoded in both semantic analysis (`ir_gen.cpp:102`) and type size computation. A `bool` field takes 8 bytes.
+1. **Struct fields are always 8 bytes.** This is hardcoded in both semantic analysis (`ir_gen.cpp:102`) and type size computation. A `bool` field takes 8 bytes. A struct with no fields occupies one qword slot so it has a valid address.
 
 2. **No implicit narrowing.** The semantic analyzer rejects any assignment where the source type cannot be widened to the target type.
 

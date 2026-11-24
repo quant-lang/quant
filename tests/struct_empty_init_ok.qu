@@ -1,0 +1,35 @@
+struct Inner {
+    i32 a;
+    bool b;
+};
+
+struct All {
+    i32 i = 42;              // default is ignored by All{}
+    f64 f;
+    bool flag;
+    str text;
+    Inner inner;
+};
+
+struct Empty {};
+
+@entry i32 main() {
+    All a = All{};
+    if (a.i != 0) return 1;
+    if ((a.f as i32) != 0) return 2;
+    if (a.flag) return 3;
+    if (a.text != nullptr) return 4;
+    if (a.inner.a != 0) return 5;
+    if (a.inner.b) return 6;
+
+    All b = {};              // implicit type from the declaration
+    if (b.i != 0) return 7;
+    if (b.inner.a != 0) return 8;
+
+    Empty e = Empty{};
+    if (sizeof(Empty) != 8) return 9;
+    *Empty p = &e;
+    if (p == nullptr) return 10;
+
+    return 0;
+}
