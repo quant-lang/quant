@@ -249,7 +249,7 @@ void greet(str name) { ... }
 
 - Return type is always required.
 - `mut` parameters: `void bump(mut i32 x)` - allows reassignment inside.
-- Functions must have at least one `return` if return type is not `void`.
+- Non-`void` functions must return on every path. A body that can fall through without a `return` is a compile error, even if another branch returns.
 - `extern` functions have no body: `extern void print(str text);`
 - Struct-returning functions use sret (hidden pointer as first argument).
 
