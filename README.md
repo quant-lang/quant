@@ -167,44 +167,11 @@ OS ABI is a small, self-contained change. See
 
 ## Todo
 
-Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
-
-### P0 - Fix first: crashes, broken output, and diagnostics
-
-* [x] Fix the compiler crash on malformed declarations. `tests/bad_function_err.qu` currently exits with a crash code instead of a normal compile error.
-* [x] Fix Windows `.exe` files that are shorter than their `.rodata` section. `qu-backend/src/backend/pe_writer.cpp` writes the aligned `.rodata` size in the header but does not pad the last section. Windows then fails with `WinError 193`. Reproduce with `tests/else_if_str_test.qu -O0` or `tests/main.qu -O2`. This also breaks `scripts/check_opt.py` and `scripts/check_comptime.py`.
-* [x] Use one diagnostic format everywhere: show the location and source token first, then the message.
-* [x] Show the source token in every error. Improve unclear messages, for example "Undefined qualified symbol" should say which symbol was not found.
-* [x] Unify all type mismatch errors. Always show the expected and received types.
-* [x] Stop printing internal type IDs. Bad examples: `Type mismatch in assignment: Node vs 4` and `14 vs 4`.
-* [x] Fix the wrong error for an undefined variable used as the right-hand side of a variable initializer.
-* [x] Keep reporting independent semantic errors. For example, "Cannot assign to immutable variable" must not hide "Missing return in non-void function".
-
-### P1 - Parser recovery and type checks
-
-* [x] Add parser recovery to `switch` and `enum` bodies, like the recovery already used for structs. Braces in these constructs are not a block, and one bad case should not create many follow-up errors.
-* [x] Continue semantic analysis after parse errors when it is safe, so more independent errors are reported.
-* [x] Check that struct fields are initialized before they are read. Variables already have this check, but fields do not.
-* [x] Fix the development-build module root. `tests/attr_hide_pub.qu` cannot load `tests::lib_hidden` because `root_path` resolves to `build/bin`.
-
-### P2 - Backends, standard library, docs and quality of life
-
-* [x] Fix ZeroPoint exit. `Arm64ZeroPointTarget::emit_exit` parks the thread with `wfe` instead of calling the Linux syscall 93; syscall 20 stays reserved until the kernel implements it.
-* [x] Add explicit checked accessors for `string` and `vec` (`try_get` returning `option<T>`). Keep `get` unchecked. This matches the "no hidden behavior" rule.
-* [x] Unify std type names. Today `string`, `option`, and `slice` use snake_case, while `Vec` uses PascalCase. Pick one rule and update the std, tests and docs.
-* [x] Add a high-level `read_line` that stores the result in an owning `string` and removes the trailing `\n`. Allocation and freeing must stay explicit.
-* [x] Improve struct literal inference from context, for example in call arguments and return values. Do not add general type inference.
-* [x] Add a way to initialize an empty struct, for example `A a = A{};`.
-* [x] Make the trailing `;` optional after `struct` and `enum` (accept both forms).
-* [x] Fix the docs: a non-void function needs a return on **every** path, not "at least one return".
-* [x] Fix the docs: enum variants are now scoped (`Enum::Variant`); bare names are an error. Update `docs/lang.md` and `AI_CONTEXT.md`.
-
-### P3 - Long-term features
-
-* [ ] Conditional operator (`cond ? a : b`). It fits the explicit style.
+* [ ] Constructors and destructors in structs (like dynamics with @onbegin @onend)
+* [ ] Conditional operator (`cond ? a : b`). It fits the explicit style
+* [ ] LSP
 * [ ] Normal per-file compilation with per-file IR and standard linking.
-* [ ] Build system.
-* [x] Fix the `scripts/check_errors.py` summary. It prints `unexpected_ok` in the `UNEXPECTED exit codes` line, so compiler crashes are listed but counted as 0.
+* [ ] Build system (like cmake, optional)
 * [ ] refactor semantic.cpp and ir.cpp
 
 ---
