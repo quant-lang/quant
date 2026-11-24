@@ -680,7 +680,7 @@ ZeroPoint is an AArch64 ELF OS with its own minimal ABI ("Linux-like, different 
 
 - **Syscalls**: one `str buffer` argument in X0, number in X8, `SVC #0`. Numbers: write=0, read=1, open=10, exit=20. Everything except the buffer (length, descriptor, mode) is computed by the OS; `open` is read-only and returns nothing (the OS prints/stores the contents itself).
 - **Output**: static-PIE (`ld.lld -pie --image-base=0x40000000`), ET_DYN, no interpreter; stock load address 0x40000000.
-- **_start**: after `main` returns it parks the core (`WFE` + branch-to-self loop) because exit(20) is not implemented in the kernel yet.
+- **_start**: after `main` returns it parks the core (`WFE` + branch-to-self loop) because exit(20) is not implemented in the kernel yet. Compiler-emitted fatal exits use the same park loop; syscall 93 (Linux exit) is never used on this target.
 - **Regions**: `region`/`alloc` are rejected at codegen time (no mmap/munmap in the ABI yet).
 - **Heap**: the kernel has no malloc yet (MMU exists, allocation syscalls are TODO). Any `@syscall(N)` outside the ABI set is a compile-time error, so loading `std::heap`/`std::arena` fails cleanly instead of emitting undefined syscalls.
 - **Format runtime**: `std::format` is not loaded on this target (`as str` casts fail at link time with undefined `qk_format_*`) until the kernel provides allocation.

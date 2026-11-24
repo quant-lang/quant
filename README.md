@@ -189,7 +189,7 @@ Priority order: **P0** first, then **P1**, **P2**, and **P3** last.
 
 ### P2 - Backends, standard library, docs and quality of life
 
-* [ ] Fix ZeroPoint exit. `Arm64ZeroPointTarget::emit_exit` uses Linux syscall 93, but the ZeroPoint ABI reserves syscall 20 for exit and documents it as not implemented. Decide between trapping and waiting for kernel support; do not call the Linux number.
+* [x] Fix ZeroPoint exit. `Arm64ZeroPointTarget::emit_exit` parks the thread with `wfe` instead of calling the Linux syscall 93; syscall 20 stays reserved until the kernel implements it.
 * [x] Add explicit checked accessors for `string` and `vec` (`try_get` returning `option<T>`). Keep `get` unchecked. This matches the "no hidden behavior" rule.
 * [x] Unify std type names. Today `string`, `option`, and `slice` use snake_case, while `Vec` uses PascalCase. Pick one rule and update the std, tests and docs.
 * [x] Add a high-level `read_line` that stores the result in an owning `string` and removes the trailing `\n`. Allocation and freeing must stay explicit.
