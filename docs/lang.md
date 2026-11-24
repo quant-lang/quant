@@ -106,7 +106,7 @@ i32 main() {
 
 - Return type is always required (use `void` if the function returns nothing).
 - Parameters can be mutable: `void foo(mut i32 x)`.
-- Function must have at least one return statement if return type is not void.
+- A non-void function must return on every path. A body that can fall through without a `return` is a compile error, even if another branch returns.
 
 ---
 
