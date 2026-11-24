@@ -449,6 +449,16 @@ Point zero = Point{};
 Point same = {};
 ````
 
+Implicit `{...}` also gets its type from a concrete context: a variable declaration, call argument, return, assignment or nested struct field. There is no general type inference for a bare `{}`:
+
+```qu
+use_point({1, 2});
+return {1, 2};
+mut Point p;
+p = {};
+Wrap w = {{1, 2}, 9};
+````
+
 `T{}` is the only initializer that allows the argument count to differ from the number of fields. Empty structs are allowed and occupy one 8-byte slot:
 
 ```

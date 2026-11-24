@@ -1115,6 +1115,28 @@ const ast::Type* SemanticAnalyzer::canonicalize_struct_type(const ast::Type* typ
     return ctx.types.get_struct(canonical);
 }
 
+void SemanticAnalyzer::apply_struct_init_expected(ast::Expr* expr, const ast::Type* expected) {
+    if (!expr || !expected)
+        return;
+    auto* si = std::get_if<ast::StructInitExpr>(&expr->kind);
+    if (!si)
+        return;
+    // Explicit `T{...}` already carries its type. Only implicit `{...}` needs
+    // the enclosing context; this is not general type inference.
+    if (si->type_ref && !std::holds_alternative<ast::TypeExpr>(si->type_ref->kind))
+        return;
+
+    const ast::Type* resolved = expected;
+    if (current_type_subst && !current_type_subst->empty())
+        resolved = ctx.types.substitute_type(resolved, *current_type_subst);
+
+    if (!resolved || resolved->kind != TypeKind::Struct)
+        return;
+
+    resolved = canonicalize_struct_type(resolved);
+    si->type_ref = memory::make<ast::Expr>(ctx.ast_arena, ast::TypeExpr{resolved}, expr->loc);
+}
+
 void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts) {
     for (auto* stmt : stmts) {
         if (!stmt) {
@@ -1486,12 +1508,7 @@ void SemanticAnalyzer::analyze_var_decl(ast::VarDecl& var, const SourceLocation&
     if (var.value) {
         // Give implicit `{...}` initializers the declared type. Refresh it
         // each analysis because generic bodies are shared.
-        if (auto* si = std::get_if<ast::StructInitExpr>(&var.value->kind)) {
-            if (!si->type_ref ||
-                std::holds_alternative<ast::TypeExpr>(si->type_ref->kind)) {
-                si->type_ref = memory::make<ast::Expr>(ctx.ast_arena, ast::TypeExpr{ resolved_type }, var.value->loc);
-            }
-        }
+        apply_struct_init_expected(var.value, resolved_type);
         const ast::Type* value_type = analyze_expr(var.value);
         if (!value_type) {
             initializer_ok = false;
@@ -1670,6 +1687,7 @@ void SemanticAnalyzer::analyze_expr_stmt(const ast::ExprStmt& expr) {
 }
 
 void SemanticAnalyzer::analyze_return(const ast::ReturnStmt& ret, const SourceLocation& loc) {
+    apply_struct_init_expected(ret.value, current_function_return_type);
     const ast::Type* value_type = ret.value
         ? analyze_expr(ret.value)
         : ctx.types.get_builtin(TypeKind::Void);
@@ -2468,6 +2486,7 @@ const ast::Type* SemanticAnalyzer::analyze_method_call(const ast::CallExpr& call
 
     for (size_t i = 0; i < call.args.size(); ++i) {
         ast::Expr* arg = call.args[i];
+        apply_struct_init_expected(arg, fn->arg_types[i]);
         const ast::Type* arg_type = arg ? analyze_expr(arg) : nullptr;
         if (!arg_type) return nullptr;
 
@@ -2583,9 +2602,6 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(ast::Expr* expr, const SourceL
 
 const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg,
                                                   const SourceLocation& loc) {
-    const ast::Type* value_type = analyze_expr(asg.value);
-    if (!value_type) return nullptr;
-
     if (!asg.target) {
         ctx.errors.add(loc, "Assignment target is missing");
         return nullptr;
@@ -2593,6 +2609,10 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg,
 
     const ast::Type* target_type = resolve_lvalue(asg.target, asg.target->loc);
     if (!target_type) return nullptr;
+
+    apply_struct_init_expected(asg.value, target_type);
+    const ast::Type* value_type = analyze_expr(asg.value);
+    if (!value_type) return nullptr;
 
     AssignCheck chk = check_assignable_value(ctx, target_type, asg.value);
     if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
@@ -3027,6 +3047,9 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call,
             std::unordered_map<std::string, const Type*> inferred;
             bool infer_ok = true;
             for (size_t i = 0; i < call.args.size(); ++i) {
+                // Only helps when the parameter type is a concrete struct;
+                // generic params still have no inferred type here.
+                apply_struct_init_expected(call.args[i], generic_def->args[i].type);
                 const Type* arg_type = analyze_expr(call.args[i]);
                 if (!arg_type) return nullptr;
                 inferred_arg_types.push_back(arg_type);
@@ -3206,6 +3229,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call,
 
         for (size_t i = 0; i < call.args.size(); ++i) {
             ast::Expr* arg = call.args[i];
+            apply_struct_init_expected(arg, concrete_fn->arg_types[i]);
             const ast::Type* arg_type = arg ? analyze_expr(arg) : nullptr;
             if (!arg_type) return nullptr;
 
@@ -3260,6 +3284,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call,
 
     for (size_t i = 0; i < call.args.size(); ++i) {
         ast::Expr* arg = call.args[i];
+        apply_struct_init_expected(arg, fn->arg_types[i]);
         const ast::Type* arg_type = arg ? analyze_expr(arg) : nullptr;
         if (!arg_type) return nullptr;
 
@@ -3390,8 +3415,10 @@ const ast::Type* SemanticAnalyzer::analyze_struct_init(const ast::StructInitExpr
             return nullptr;
         }
 
-        // Validate argument types
+        // Validate argument types. A nested `{...}` gets the field type from
+        // this struct declaration, just like a variable initializer does.
         for (size_t i = 0; i < node.args.size(); ++i) {
+            apply_struct_init_expected(node.args[i], ss->field_types[i]);
             const ast::Type* arg_type = analyze_expr(node.args[i]);
             if (!arg_type)
                 return nullptr;

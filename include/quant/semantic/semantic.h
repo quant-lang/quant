@@ -52,6 +52,8 @@ class SemanticAnalyzer {
         // types used inside the defining module (e.g. cmp::ordering).
         const ast::Type* canonicalize_struct_type(const ast::Type* type);
 
+        void apply_struct_init_expected(ast::Expr* expr, const ast::Type* expected);
+
         void analyze_var_decl(ast::VarDecl& var, const SourceLocation& loc);
         void analyze_struct_decl(const ast::StructDecl& str, const SourceLocation& loc);
         void analyze_enum_decl(const ast::EnumDecl& enm, const SourceLocation& loc);

@@ -1,0 +1,60 @@
+struct Point {
+    i32 x;
+    i32 y;
+};
+
+struct Wrap {
+    Point p;
+    i32 n;
+};
+
+Point make() {
+    return {5, 6};
+}
+
+Point make_zero() {
+    return {};
+}
+
+void take(Point p, i32 expected) {
+    if (p.x != expected)
+        return;
+}
+
+void take_generic<T>(Point p, T value) {
+    if (p.x != 0)
+        return;
+}
+
+@entry i32 main() {
+    take({3, 4}, 3);
+    take({}, 0);
+    take_generic<i32>({}, 1);
+
+    Point a = make();
+    if (a.x != 5) return 1;
+    if (a.y != 6) return 2;
+
+    Point z = make_zero();
+    if (z.x != 0) return 3;
+    if (z.y != 0) return 4;
+
+    mut Point b;
+    b = {7, 8};
+    if (b.x != 7) return 5;
+    if (b.y != 8) return 6;
+    b = {};
+    if (b.x != 0) return 7;
+    if (b.y != 0) return 8;
+
+    Wrap w = {{1, 2}, 9};
+    if (w.p.x != 1) return 9;
+    if (w.p.y != 2) return 10;
+    if (w.n != 9) return 11;
+
+    Wrap wz = {{}, 0};
+    if (wz.p.x != 0) return 12;
+    if (wz.p.y != 0) return 13;
+
+    return 0;
+}

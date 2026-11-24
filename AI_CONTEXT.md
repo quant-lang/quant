@@ -296,12 +296,20 @@ Point p = {10, 20};        // positional field init
 Point q = Point{30, 40};   // explicit type syntax
 Point z = Point{};         // empty init: every field is zeroed
 Point z2 = {};             // same, type comes from the declaration
+use_point({1, 2});         // expected type comes from the parameter
+return {1, 2};             // expected type comes from the return type
+p = {1, 2};                // expected type comes from the assignment target
+Wrap w = {{1, 2}, 9};      // nested `{...}` gets the field type
 ```
 
 - Argument count must match field count exactly, except that `T{}` is allowed
   for any struct and means "set every field to its zero value".
 - Each argument type must match the field type.
 - No named initialization syntax.
+- Implicit `{...}` gets its struct type only from an explicit context: variable
+  declaration, call argument, return type, assignment target, or a nested
+  struct field. This is not general type inference; `{}` with no such context
+  is still an error.
 - `T{}` does **not** run field defaults; it writes literal zeros (`0`, `false`,
   `nullptr`, `0.0`) to every leaf field, including nested structs. Field
   defaults only apply to declarations without an initializer.
