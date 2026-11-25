@@ -374,6 +374,11 @@ str s = 42 as str;       // number -> string
 str t = 3.14 as str;     // float -> string
 ```
 
+`as str` writes each result into its own heap allocation. Integers are decimal.
+Floats keep up to six fractional digits: fixed notation for magnitudes in
+`[1e-4, 1e6)`, scientific notation outside it (`1.2345e20`), and `nan`/`inf`
+for non-finite values.
+
 ### Implicit conversions (widening only)
 
 Most numeric conversions happen automatically as long as they are guaranteed

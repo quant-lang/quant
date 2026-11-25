@@ -1,0 +1,18 @@
+load "std::io";
+using std::io;
+
+// Floats use fixed notation inside [1e-4, 1e6) and scientific notation
+// outside it. Fractional decimals are kept to at most six digits.
+i32 main() {
+    println(3.14 as str);           // 3.14
+    println((-0.5) as str);         // -0.5
+    println(0.0 as str);            // 0
+    println(0.1 as str);            // 0.1
+    println(1e-4 as str);           // 0.0001
+    println(1e-5 as str);           // 1e-5
+    println(999999.0 as str);       // 999999
+    println(1e6 as str);            // 1e6
+    println(1.2345e20 as str);      // 1.2345e20
+    println(3.141592653589793 as str); // 3.141592
+    return 0;
+}

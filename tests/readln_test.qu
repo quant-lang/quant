@@ -1,0 +1,11 @@
+load "std::io";
+using std::io;
+
+// readln owns its result: the caller frees it. With empty stdin it returns an
+// empty string. On Windows a trailing '\r\n' is stripped as one line ending.
+i32 main() {
+    std::string::string line = readln();
+    println(line.cstr());
+    line.free();
+    return 0;
+}

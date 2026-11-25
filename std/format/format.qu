@@ -1,193 +1,153 @@
 // std::format
 //
 // Number-to-string formatting, used by `as str` casts.
-// Pure Quant implementation. Each result is copied into its own heap
-// allocation so multiple formatted strings can coexist.
+// Every call writes into its own heap allocation, so multiple formatted
+// strings can coexist without a shared scratch buffer.
 
 module "std::format";
 
 load "std::heap";
 
-// Scratch buffers: digits are written into them backwards and then
-// compacted to the front of the buffer.
-struct Buf32 {
-    u64 f0;
-    u64 f1;
-    u64 f2;
-    u64 f3;
-};
+/// Buffer helpers ///
 
-struct Buf64 {
-    u64 f0;
-    u64 f1;
-    u64 f2;
-    u64 f3;
-    u64 f4;
-    u64 f5;
-    u64 f6;
-    u64 f7;
-};
-
-dynamic {
-    @init mut Buf32 g_buf32;
-    @init mut Buf64 g_buf64;
-
-    @onbegin void format_dyn_on_begin() {}
-    @onend   void format_dyn_on_end()   {}
+u64 put_char(str p, u64 pos, char c) {
+    p[pos] = c;
+    return pos + 1;
 }
 
-// Copy a NUL-terminated buffer into a fresh heap allocation and return it
-// as a string. Falls back to the scratch buffer if allocation fails.
-str to_heap(str src) {
-    mut i64 n = 0;
-    while (src[n] != 0) {
+// Write decimal digits straight into their final positions: the digit
+// count is known up front, so no temporary buffer or second copy is needed.
+u64 put_u64(str p, u64 pos, mut u64 v) {
+    mut u64 n = 1;
+    mut u64 t = v;
+    while (t >= 10) {
+        t /= 10;
         n++;
     }
-    str buf = std::heap::heap_malloc((n + 1) as u64) as! str;
-    if (buf == (0 as! str)) {
-        return src;
+    for (mut u64 i = n; i > 0; i--) {
+        u64 q = v / 10;
+        p[pos + i - 1] = (48 + (v - q * 10)) as char;
+        v = q;
     }
-    for (mut i64 i = 0; i <= n; i++) {
-        buf[i] = src[i];
-    }
-    return buf;
+    return pos + n;
 }
 
-// Write the decimal digits of `v` into `p` backwards, ending at index 30.
-// Returns the index just before the first digit.
-i32 digits_u64(u64 v, str p) {
-    mut u64 val = v;
-    mut i32 i = 30;
-    if (val == 0) {
-        p[i] = 48;
-        i--;
-    } else {
-        while (val != 0) {
-            u64 q = val / 10;
-            u64 r = val - q * 10;
-            p[i] = (48 + r) as char;
-            val = q;
-            i--;
-        }
+// Up to six fractional digits, without trailing zeros or a bare dot.
+u64 put_fraction(str p, mut u64 pos, mut f64 frac) {
+    if (frac == 0.0) return pos;
+    pos = put_char(p, pos, 46 as char);
+    mut i32 nd = 0;
+    for (; (nd < 6) && (frac != 0.0); nd++) {
+        frac *= 10.0;
+        i64 d = frac as i64;
+        if ((d < 0) || (d > 9)) break;
+        pos = put_char(p, pos, (48 + d) as char);
+        frac -= d as f64;
     }
-    return i;
+    while ((nd > 0) && (p[pos - 1] == 48)) {
+        pos--;
+        nd--;
+    }
+    if (nd == 0) pos--;
+    return pos;
 }
 
-// Copy the digits [first+1..30] to the front of the buffer (offset by `neg`)
-// and NUL-terminate.
-void finish(str p, i32 first, i32 neg) {
-    mut i32 src = first + 1;
-    mut i32 dst = neg;
-    while (src <= 30) {
-        p[dst] = p[src];
-        src++;
-        dst++;
-    }
-    if (neg != 0) {
-        p[0] = 45;
-    }
-    p[dst] = 0;
-}
+/// Integers ///
 
 @export("qk_format_i64")
 str format_i64(i64 v) {
-    str p = (&g_buf32) as! str;
-    mut i32 neg = 0;
-    mut u64 val = 0;
+    str p = std::heap::heap_malloc(32) as! str;
+    if (p == nullptr) return "";
+
+    mut u64 pos = 0;
     if (v < 0) {
-        neg = 1;
-        val = (0 - v) as u64;
+        pos = put_char(p, pos, 45 as char);
+        pos = put_u64(p, pos, (0 - v) as u64);
     } else {
-        val = v as u64;
+        pos = put_u64(p, pos, v as u64);
     }
-    i32 i = digits_u64(val, p);
-    finish(p, i, neg);
-    return to_heap(p);
+    p[pos] = 0;
+    return p;
 }
 
 @export("qk_format_u64")
 str format_u64(u64 v) {
-    str p = (&g_buf32) as! str;
-    i32 i = digits_u64(v, p);
-    finish(p, i, 0);
-    return to_heap(p);
+    str p = std::heap::heap_malloc(32) as! str;
+    if (p == nullptr) return "";
+
+    u64 pos = put_u64(p, 0, v);
+    p[pos] = 0;
+    return p;
 }
+
+/// Floats ///
 
 @export("qk_format_f64")
 str format_f64(f64 v) {
-    if (v != v) {
-        return "nan";
-    }
-    if (v > 1.7976931348623157e308) {
-        return "inf";
-    }
-    if (v < -1.7976931348623157e308) {
-        return "-inf";
-    }
-    str p = (&g_buf64) as! str;
-    mut i32 neg = 0;
+    if (v != v) return "nan";
+    if (v > 1.7976931348623157e308) return "inf";
+    if (v < -1.7976931348623157e308) return "-inf";
+
+    str p = std::heap::heap_malloc(32) as! str;
+    if (p == nullptr) return "";
+
+    mut u64 pos = 0;
     mut f64 x = v;
-    if (v < 0.0) {
-        neg = 1;
-        x = 0.0 - v;
+    if (x < 0.0) {
+        pos = put_char(p, pos, 45 as char);
+        x = 0.0 - x;
     }
+    if (x == 0.0) {
+        pos = put_char(p, pos, 48 as char);
+        p[pos] = 0;
+        return p;
+    }
+
+    // Normalize to a mantissa in [1, 10) and count decimal shifts. The
+    // correction pass keeps the mantissa in range when a power of ten is
+    // rounded just below 1 or just above 10 by repeated division.
+    mut f64 m = x;
     mut i32 e = 0;
-    if (x >= 9.2233720368547758e18) {
-        while (x >= 10.0) {
-            x = x / 10.0;
+    if (m >= 10.0) {
+        while (m >= 10.0) {
+            m /= 10.0;
+            e++;
+        }
+        if (m < 1.0) {
+            m *= 10.0;
+            e--;
+        }
+    } else if (m < 1.0) {
+        while (m < 1.0) {
+            m *= 10.0;
+            e--;
+        }
+        if (m >= 10.0) {
+            m /= 10.0;
             e++;
         }
     }
+
+    // Outside [1e-4, 1e6) fixed notation loses the significant digits of
+    // tiny values and drowns the fraction of huge ones.
+    if ((e >= 6) || (e <= -5)) {
+        i64 d = m as i64;
+        pos = put_u64(p, pos, d as u64);
+        pos = put_fraction(p, pos, m - (d as f64));
+        pos = put_char(p, pos, 101 as char);
+        if (e < 0) {
+            pos = put_char(p, pos, 45 as char);
+            pos = put_u64(p, pos, (0 - e) as u64);
+        } else {
+            pos = put_u64(p, pos, e as u64);
+        }
+        p[pos] = 0;
+        return p;
+    }
+
     i64 ipart = x as i64;
-    i32 i = digits_u64(ipart as u64, p);
-    mut i32 src = i + 1;
-    mut i32 dst = neg;
-    while (src <= 30) {
-        p[dst] = p[src];
-        src++;
-        dst++;
-    }
-    if (neg != 0) {
-        p[0] = 45;
-    }
-    mut f64 frac = x - (ipart as f64);
-    mut i32 nd = 0;
-    if (frac != 0.0) {
-        p[dst] = 46;
-        dst++;
-        mut i32 done = 0;
-        while ((nd < 6) && (done == 0)) {
-            frac = frac * 10.0;
-            i64 d = frac as i64;
-            if ((d < 0) || (d > 9)) {
-                done = 1;
-            } else {
-                p[dst] = (48 + d) as char;
-                dst++;
-                nd++;
-                frac = frac - (d as f64);
-                if (frac == 0.0) { done = 1; }
-            }
-        }
-        while ((nd > 0) && (p[dst - 1] == 48)) {
-            dst--;
-            nd--;
-        }
-        if (nd == 0) {
-            dst--;
-        }
-    }
-    if (e != 0) {
-        p[dst] = 101;
-        dst++;
-        i32 je = digits_u64(e as u64, p);
-        mut i32 src2 = je + 1;
-        while (src2 <= 30) {
-            p[dst] = p[src2];
-            src2++;
-            dst++;
-        }
-    }
-    p[dst] = 0;
-    return to_heap(p);
+    pos = put_u64(p, pos, ipart as u64);
+    pos = put_fraction(p, pos, x - (ipart as f64));
+    p[pos] = 0;
+    return p;
 }

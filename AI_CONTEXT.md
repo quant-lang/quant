@@ -559,8 +559,8 @@ All stdlib is written in pure Quant. Key modules:
 
 | Module        | Description                                    |
 |---------------|------------------------------------------------|
-| `std::io`     | `print`, `println`, `print_char`, `exit`       |
-| `std::format` | String formatting                              |
+| `std::io`     | `print`, `println`, `print_char`, `exit`, `readln` (owning `string`, strips `\n` / `\r\n`) |
+| `std::format` | `as str` runtime: own heap buffer per result; decimal ints, fixed/scientific floats |
 | `std::string` | String operations                              |
 | `std::math`   | Math functions                                 |
 | `std::heap`   | `heap_malloc`, `heap_realloc`, `heap_free`     |

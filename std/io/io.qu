@@ -167,12 +167,19 @@ i64 read(str buf, i64 len) {
     return r;
 }
 
-// readln - read up to 4096 bytes from stdin, strip the trailing '\n', and return an std::string::string.
+// readln - read up to 4096 bytes from stdin, strip the trailing '\r\n',
+// and return an owning std::string::string. The caller frees it.
 std::string::string readln() {
-    mut u64 r = read(input_buf, 4096) as u64;
-    if (input_buf[r - 1] == '\n')
-        r -= 1;
-    return std::string::makestr_len(input_buf, r);
+    i64 r = read(input_buf, 4096);
+    mut u64 n = 0;
+    if (r > 0) {
+        n = r as u64;
+        if (input_buf[n - 1] == '\n')
+            n--;
+        if ((n > 0) && (input_buf[n - 1] == '\r'))
+            n--;
+    }
+    return std::string::makestr_len(input_buf, n);
 }
 
 // read_char - read a single byte from stdin, or -1 at end of input.

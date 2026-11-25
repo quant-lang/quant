@@ -21,7 +21,7 @@ using front::ast_serialize;
 
 @entry i32 main() {
     Region r = _create(#(1048576 as u64));
-
+ 
     // Allocate the output buffer BEFORE parsing.
     // Arena bump returns zeroed memory, so the buffer is pre-filled with NULs.
     mut *u8 out_buf = r.bump(#(16384 as u64)) as! *u8;

@@ -16,6 +16,9 @@
 
 module "std::io";
 
+load "std::heap";
+load "std::string";
+
 @import("kernel32.dll", "GetStdHandle") extern i64 sys_get_std_handle(i64 nStdHandle);
 @import("kernel32.dll", "WriteFile") extern i32 sys_write_file(i64 hFile, str lpBuffer, i64 nNumberOfBytesToWrite, str lpNumberOfBytesWritten, *void lpOverlapped);
 @import("kernel32.dll", "ReadFile") extern i32 sys_read_file(i64 hFile, str lpBuffer, i64 nNumberOfBytesToRead, str lpNumberOfBytesRead, *void lpOverlapped);
@@ -42,6 +45,18 @@ dynamic {
 
     @onbegin void win_io_scratch_dyn_on_begin() {}
     @onend   void win_io_scratch_dyn_on_end()   {}
+}
+
+dynamic {
+    mut str input_buf;
+
+    @onbegin void win_io_readln_on_begin() {
+        input_buf = std::heap::heap_malloc(4096) as! str;
+    }
+
+    @onend void win_io_readln_on_end() {
+        std::heap::heap_free(input_buf as! *void);
+    }
 }
 
 // qk_io_init - cache the standard handles. Called by the generated entry stub.
@@ -113,6 +128,19 @@ i64 read_fd(i64 fd, str buf, i64 len) {
 i64 read(str buf, i64 len) {
     sys_read_file(g_stdin, buf, len, (&g_scratch) as! str, 0 as! *void);
     return g_scratch.v;
+}
+
+// readln - read up to 4096 bytes from stdin, strip the trailing '\r\n',
+// and return an owning std::string::string. The caller frees it.
+std::string::string readln() {
+    i64 r = read(input_buf, 4096);
+    mut u64 n = 0;
+    if (r > 0) {
+        n = r as u64;
+        if (input_buf[n - 1] == '\n') n--;
+        if ((n > 0) && (input_buf[n - 1] == '\r')) n--; m
+    }
+    return std::string::makestr_len(input_buf, n);
 }
 
 // read_char - read one byte from stdin.
