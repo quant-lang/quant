@@ -168,6 +168,7 @@ OS ABI is a small, self-contained change. See
 ## Todo
 
 * [ ] Constructors and destructors in structs (like dynamics with @onbegin @onend)
+* [ ] Functions overloading 
 * [ ] Conditional operator (`cond ? a : b`). It fits the explicit style
 * [x] LSP
 * [ ] Normal per-file compilation with per-file IR and standard linking.
